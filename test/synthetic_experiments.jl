@@ -36,7 +36,7 @@ to = TimerOutput()
 # to save results
 f = h5open("FKT_synthetic_experiments.h5", "w")
 
-sizes = @. 1024 * 2^(1:2)
+sizes = @. 2048 * 2^(1:2)
 dimensions = [3]
 f["sizes"] = sizes
 f["dimensions"] = dimensions
