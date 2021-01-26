@@ -114,7 +114,7 @@ version = "0.6.1"
 deps = ["DiffResults", "ForwardDiff", "KroneckerProducts", "LazyInverse", "LinearAlgebra", "LinearAlgebraExtensions", "SpecialFunctions", "Test", "ToeplitzMatrices", "WoodburyIdentity"]
 git-tree-sha1 = "9dcb21978e898d088d9bfa35d046fb467dc8c053"
 repo-rev = "master"
-repo-url = "git@github.com:SebastianAment/CovarianceFunctions.jl.git"
+repo-url = "https://github.com/SebastianAment/CovarianceFunctions.jl.git"
 uuid = "b3329135-7958-41d4-bb02-e084c5a526bf"
 version = "0.1.0"
 
@@ -395,7 +395,7 @@ version = "2.0.1+3"
 deps = ["LazyInverse", "LinearAlgebra", "LinearAlgebraExtensions", "Random", "Test"]
 git-tree-sha1 = "a24343d956e46096a3b23dba4efc46a807cd8efb"
 repo-rev = "master"
-repo-url = "git@github.com:SebastianAment/KroneckerProducts.jl.git"
+repo-url = "https://github.com/SebastianAment/KroneckerProducts.jl.git"
 uuid = "1b19e153-50d3-4699-8064-93bcb9fb4fba"
 version = "0.1.0"
 
@@ -432,7 +432,7 @@ version = "0.20.2"
 deps = ["LinearAlgebra", "Test"]
 git-tree-sha1 = "31c384b494aaf4220e3724e9ca1e94839b643f42"
 repo-rev = "master"
-repo-url = "git@github.com:SebastianAment/LazyInverse.jl.git"
+repo-url = "https://github.com/SebastianAment/LazyInverse.jl.git"
 uuid = "d0afe1cb-6484-4949-b9e9-61bc645ed6c7"
 version = "0.1.0"
 
@@ -505,7 +505,7 @@ uuid = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 deps = ["FFTW", "InfiniteArrays", "LazyArrays", "LazyInverse", "LinearAlgebra", "StatsBase", "Test"]
 git-tree-sha1 = "90996903f03d04c45cc7c85253693f0983373419"
 repo-rev = "master"
-repo-url = "git@github.com:SebastianAment/LinearAlgebraExtensions.jl.git"
+repo-url = "https://github.com/SebastianAment/LinearAlgebraExtensions.jl.git"
 uuid = "cb114d4a-f1bd-499c-ad9e-7f2ed74575b9"
 version = "0.1.0"
 
@@ -890,7 +890,7 @@ version = "1.18.0+4"
 deps = ["BenchmarkTools", "LazyInverse", "LinearAlgebra", "LinearAlgebraExtensions", "Test"]
 git-tree-sha1 = "4756b5f96be00e133d5575fae4244b40d780b7da"
 repo-rev = "master"
-repo-url = "git@github.com:SebastianAment/WoodburyIdentity.jl.git"
+repo-url = "https://github.com/SebastianAment/WoodburyIdentity.jl.git"
 uuid = "49563772-d9e4-48b4-a8b6-4cbe661ead9f"
 version = "0.1.0"
 

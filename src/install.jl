@@ -1,6 +1,6 @@
 using Pkg
 
-ssh = true
+ssh = false
 if ssh
     git = "git@github.com:SebastianAment/"
 else
