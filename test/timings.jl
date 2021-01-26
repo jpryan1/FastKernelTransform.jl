@@ -6,12 +6,12 @@ using TimerOutputs
 # Create the timer object
 to = TimerOutput()
 
-N                 = 8000  # Number of points
-max_dofs_per_leaf = 256  # When to stop in tree decomposition
-precond_param     = 512  # Size of diag blocks to inv for preconditioner
+N                 = 16000  # Number of points
+max_dofs_per_leaf = 1024  # When to stop in tree decomposition
+precond_param     = 2048  # Size of diag blocks to inv for preconditioner
 
-trunc_param = 10
-dimension   = 3
+trunc_param = 5
+dimension   = 4
 # Parameter used for Gegenbauer polynomials
 alpha = dimension/2 - 1
 # Lookup table for transformation coefficients
@@ -19,8 +19,9 @@ scale   = 10
 points  = [scale .* rand(dimension) for i in 1:N]
 
 # define kernel
-kernel(r) = exp(-r)
-kernel(x, y) = kernel(norm(x-y))
+using CovarianceFunctions
+using CovarianceFunctions: Exp, EQ, MaternP, Matern, Cauchy
+kernel = Exp()
 
 # Start with random data values at each point
 x = rand(N)
@@ -38,9 +39,16 @@ end
 # kern = k(r)
 # kernel_fun = get_kernel_fun(kern)
 # @timeit to "Form dense matrix symbolic" kern_mat  = kernel_fun.(points, permutedims(points))
-@timeit to "Form dense matrix direct" kern_mat  = kernel.(points, permutedims(points))
+
+@timeit to "Form dense matrix direct" begin
+    @timeit to "allocation" kern_mat = zeros(length(points), length(points))
+    @timeit to "computation" kern_mat .= kernel.(points, permutedims(points))
+end
 @timeit to "Factorization matvec "       bbar      = fact * x
 @timeit to "Dense matvec "      b         = kern_mat * x
+G = gramian(kernel, points)
+@timeit to "Lazy matvec " mul!(b, G, x)
+
 # println("Factorization matvec error ", norm(b-bbar)/norm(b))
 # @timeit to "Fact approx solve"  xbar      = fact \ b
 # @timeit to "Dense solve "       xstar     = kern_mat \ b

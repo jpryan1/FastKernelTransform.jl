@@ -1,10 +1,4 @@
 # computes all available derivatives, including value (0th order derivative)
-# IDEA: could specialize for popular kernel types
-# function derivatives!(d::AbstractVector, f::CovarianceFunctions.Exp, r::Real)
-#     m = length(d)-1
-#     @. d = f(r)
-# end
-
 derivatives(t::Taylor1) = derivatives!(similar(t.coeffs), t)
 function derivatives!(d::AbstractVector, t::Taylor1)
     c, n = t.coeffs, t.order
@@ -32,3 +26,9 @@ function derivatives!(d::AbstractVector, f, x::Real)
     fx = f(x) # TODO: in place?
     derivatives!(d, fx) # overwrites coeffs vector with derivatives
 end
+
+# IDEA: could specialize for popular kernel types
+# function derivatives!(d::AbstractVector, f::CovarianceFunctions.Exp, r::Real)
+#     m = length(d)-1
+#     @. d = f(r)
+# end

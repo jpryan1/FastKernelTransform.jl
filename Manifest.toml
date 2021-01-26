@@ -12,6 +12,12 @@ git-tree-sha1 = "4146c39f29be88c3f0cef732f86e5ab640d2e22d"
 uuid = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
 version = "3.1.1"
 
+[[ArrayLayouts]]
+deps = ["Compat", "FillArrays", "LinearAlgebra", "SparseArrays"]
+git-tree-sha1 = "4dfcc844cd3ea62bb9a2175f4c172c82545fa905"
+uuid = "4c555306-a7a7-4459-81d9-ec55ddd5c99a"
+version = "0.5.1"
+
 [[Artifacts]]
 deps = ["Pkg"]
 git-tree-sha1 = "c30985d8821e0cd73870b17b0ed0ce6dc44cb744"
@@ -74,6 +80,12 @@ git-tree-sha1 = "08c8b6831dc00bfea825826be0bc8336fc369860"
 uuid = "861a8166-3701-5b0c-9a16-15d98fcdc6aa"
 version = "1.0.2"
 
+[[CommonSubexpressions]]
+deps = ["MacroTools", "Test"]
+git-tree-sha1 = "7b8a93dba8af7e3b42fecabf646260105ac373f7"
+uuid = "bbf7d656-a473-5ed7-a52c-81e309532950"
+version = "0.3.0"
+
 [[Compat]]
 deps = ["Base64", "Dates", "DelimitedFiles", "Distributed", "InteractiveUtils", "LibGit2", "Libdl", "LinearAlgebra", "Markdown", "Mmap", "Pkg", "Printf", "REPL", "Random", "SHA", "Serialization", "SharedArrays", "Sockets", "SparseArrays", "Statistics", "Test", "UUIDs", "Unicode"]
 git-tree-sha1 = "919c7f3151e79ff196add81d7f4e45d91bbf420b"
@@ -97,6 +109,14 @@ deps = ["LinearAlgebra", "StaticArrays"]
 git-tree-sha1 = "6d1c23e740a586955645500bbec662476204a52c"
 uuid = "150eb455-5306-5404-9cee-2592286d6298"
 version = "0.6.1"
+
+[[CovarianceFunctions]]
+deps = ["DiffResults", "ForwardDiff", "KroneckerProducts", "LazyInverse", "LinearAlgebra", "LinearAlgebraExtensions", "SpecialFunctions", "Test", "ToeplitzMatrices", "WoodburyIdentity"]
+git-tree-sha1 = "9dcb21978e898d088d9bfa35d046fb467dc8c053"
+repo-rev = "master"
+repo-url = "git@github.com:SebastianAment/CovarianceFunctions.jl.git"
+uuid = "b3329135-7958-41d4-bb02-e084c5a526bf"
+version = "0.1.0"
 
 [[DSP]]
 deps = ["FFTW", "IterTools", "LinearAlgebra", "Polynomials", "Random", "Reexport", "SpecialFunctions", "Statistics"]
@@ -127,6 +147,18 @@ uuid = "ade2ca70-3891-5945-98fb-dc099432e06a"
 [[DelimitedFiles]]
 deps = ["Mmap"]
 uuid = "8bb1440f-4735-579b-a4ab-409b98df4dab"
+
+[[DiffResults]]
+deps = ["StaticArrays"]
+git-tree-sha1 = "c18e98cba888c6c25d1c3b048e4b3380ca956805"
+uuid = "163ba53b-c6d8-5494-b064-1a9d43ac40c5"
+version = "1.0.3"
+
+[[DiffRules]]
+deps = ["NaNMath", "Random", "SpecialFunctions"]
+git-tree-sha1 = "214c3fcac57755cfda163d91c58893a8723f93e9"
+uuid = "b552c78f-8df3-52c6-915a-8e097449b14b"
+version = "1.0.2"
 
 [[Distributed]]
 deps = ["Random", "Serialization", "Sockets"]
@@ -203,6 +235,12 @@ git-tree-sha1 = "052e907d31ab38c1a72db86b1c643afe5ef83f6e"
 uuid = "34b6f7d7-08f9-5794-9e10-3819e4c7e49a"
 version = "0.3.3+0"
 
+[[FillArrays]]
+deps = ["LinearAlgebra", "Random", "SparseArrays"]
+git-tree-sha1 = "8bd8e47ff5d34b20f0aa9641988eb660590008bc"
+uuid = "1a297f60-69ca-5386-bcde-b61e274b549b"
+version = "0.11.0"
+
 [[FixedPointNumbers]]
 deps = ["Statistics"]
 git-tree-sha1 = "335bfdceacc84c5cdf16aadc768aa5ddfc5383cc"
@@ -220,6 +258,12 @@ deps = ["Printf"]
 git-tree-sha1 = "8339d61043228fdd3eb658d86c926cb282ae72a8"
 uuid = "59287772-0a20-5a39-b81b-1366585eb4c0"
 version = "0.4.2"
+
+[[ForwardDiff]]
+deps = ["CommonSubexpressions", "DiffResults", "DiffRules", "NaNMath", "Random", "SpecialFunctions", "StaticArrays"]
+git-tree-sha1 = "c26b56e9b9f0687f7ca887f6b6ded03d269e0e35"
+uuid = "f6369f11-7733-5829-9624-2563aa707210"
+version = "0.10.15"
 
 [[FreeType2_jll]]
 deps = ["Artifacts", "Bzip2_jll", "JLLWrappers", "Libdl", "Pkg", "Zlib_jll"]
@@ -292,6 +336,12 @@ git-tree-sha1 = "9f27296c4007a6f3b3dd9e9b8092a5a01a5961e3"
 uuid = "34004b35-14d8-5ef3-9330-4cdb6864b03a"
 version = "0.2.3"
 
+[[InfiniteArrays]]
+deps = ["ArrayLayouts", "DSP", "FillArrays", "LazyArrays", "LinearAlgebra", "Statistics"]
+git-tree-sha1 = "0fa712964d9bc2578ce53736b7e22f08d75a4208"
+uuid = "4858937d-0d70-526a-a4dd-2d5cb5dd786c"
+version = "0.9.0"
+
 [[IniFile]]
 deps = ["Test"]
 git-tree-sha1 = "098e4d2c533924c921f9f9847274f2ad89e018b8"
@@ -341,6 +391,14 @@ git-tree-sha1 = "9aff0587d9603ea0de2c6f6300d9f9492bbefbd3"
 uuid = "aacddb02-875f-59d6-b918-886e6ef4fbf8"
 version = "2.0.1+3"
 
+[[KroneckerProducts]]
+deps = ["LazyInverse", "LinearAlgebra", "LinearAlgebraExtensions", "Random", "Test"]
+git-tree-sha1 = "a24343d956e46096a3b23dba4efc46a807cd8efb"
+repo-rev = "master"
+repo-url = "git@github.com:SebastianAment/KroneckerProducts.jl.git"
+uuid = "1b19e153-50d3-4699-8064-93bcb9fb4fba"
+version = "0.1.0"
+
 [[LAME_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
 git-tree-sha1 = "df381151e871f41ee86cee4f5f6fd598b8a68826"
@@ -363,6 +421,20 @@ deps = ["Formatting", "InteractiveUtils", "LaTeXStrings", "MacroTools", "Markdow
 git-tree-sha1 = "3a0084cec7bf157edcb45a67fac0647f88fe5eaf"
 uuid = "23fbe1c1-3f47-55db-b15f-69d7ec21a316"
 version = "0.14.7"
+
+[[LazyArrays]]
+deps = ["ArrayLayouts", "FillArrays", "LinearAlgebra", "MacroTools", "MatrixFactorizations", "SparseArrays", "StaticArrays"]
+git-tree-sha1 = "4c6b332c360970f361da489e1d48949cbdb99d17"
+uuid = "5078a376-72f3-5289-bfd5-ec5146d43c02"
+version = "0.20.2"
+
+[[LazyInverse]]
+deps = ["LinearAlgebra", "Test"]
+git-tree-sha1 = "31c384b494aaf4220e3724e9ca1e94839b643f42"
+repo-rev = "master"
+repo-url = "git@github.com:SebastianAment/LazyInverse.jl.git"
+uuid = "d0afe1cb-6484-4949-b9e9-61bc645ed6c7"
+version = "0.1.0"
 
 [[LibGit2]]
 deps = ["Printf"]
@@ -429,6 +501,14 @@ version = "2.34.0+7"
 deps = ["Libdl"]
 uuid = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 
+[[LinearAlgebraExtensions]]
+deps = ["FFTW", "InfiniteArrays", "LazyArrays", "LazyInverse", "LinearAlgebra", "StatsBase", "Test"]
+git-tree-sha1 = "90996903f03d04c45cc7c85253693f0983373419"
+repo-rev = "master"
+repo-url = "git@github.com:SebastianAment/LinearAlgebraExtensions.jl.git"
+uuid = "cb114d4a-f1bd-499c-ad9e-7f2ed74575b9"
+version = "0.1.0"
+
 [[Logging]]
 uuid = "56ddb016-857b-54e1-b83d-db4d58db5568"
 
@@ -459,6 +539,12 @@ version = "0.5.6"
 [[Markdown]]
 deps = ["Base64"]
 uuid = "d6f4376e-aef5-505a-96c1-9c027394607a"
+
+[[MatrixFactorizations]]
+deps = ["ArrayLayouts", "LinearAlgebra", "Printf", "Random"]
+git-tree-sha1 = "9910fd416f497a3c50a44ae9eef9e0dd0d105b7a"
+uuid = "a3b82374-2e81-5b9e-98ce-41277c0e4c87"
+version = "0.8.0"
 
 [[MbedTLS]]
 deps = ["Dates", "MbedTLS_jll", "Random", "Sockets"]
@@ -799,6 +885,14 @@ deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg", "Wayland_jll"]
 git-tree-sha1 = "2839f1c1296940218e35df0bbb220f2a79686670"
 uuid = "2381bf8a-dfd0-557d-9999-79630e7b1b91"
 version = "1.18.0+4"
+
+[[WoodburyIdentity]]
+deps = ["BenchmarkTools", "LazyInverse", "LinearAlgebra", "LinearAlgebraExtensions", "Test"]
+git-tree-sha1 = "4756b5f96be00e133d5575fae4244b40d780b7da"
+repo-rev = "master"
+repo-url = "git@github.com:SebastianAment/WoodburyIdentity.jl.git"
+uuid = "49563772-d9e4-48b4-a8b6-4cbe661ead9f"
+version = "0.1.0"
 
 [[XML2_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Libiconv_jll", "Pkg", "Zlib_jll"]

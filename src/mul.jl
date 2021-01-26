@@ -1,7 +1,7 @@
 # matrix-vector multiplication and solves for MultipoleFactorization type
 import LinearAlgebra: *, mul!, \
 # TODO: complex vector necessary?
-*(fact::MultipoleFactorization, x::AbstractVector) = mul!(zeros(Complex{Float64},size(x)), fact, x)
+*(fact::MultipoleFactorization, x::AbstractVector) = mul!(zeros(Complex{Float64}, size(x)), fact, x)
 # *(fact::MultipoleFactorization, x::AbstractVector) = mul!(zero(x), fact, x)
 \(fact::MultipoleFactorization, b::AbstractVector) = conj_grad(fact, b)
 

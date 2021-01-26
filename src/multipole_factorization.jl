@@ -28,17 +28,11 @@ mutable struct MultipoleFactorization{K, TO<:TimerOutput, MST, TCT, NT, TT<:Tree
   precond_param::Int64
   trunc_param::Int64
   to::TO
-  # derivs::DT # Derivatives of kernel
-  # Below are two helper arrays, converting from k,h,i representation of
+  # helper array, converting from (k, h, i) representation of
   # multipole coefficients to single indices into an array (for efficient
   # matrix vector products)
   multi_to_single::MST
-  # Lookup table for Julia functions for F and G functions in expansion
-  # F_coef_table::FT
-  # G_coef_table::FT
-  # radial_fun_ranks::RFT
-  # Lookup table for transformation coefficients
-  transform_coef_table::TCT
+  transform_coef_table::TCT # Lookup table for transformation coefficients
   normalizer_table::NT
   tree::TT
 end
@@ -47,25 +41,14 @@ end
 # takes arbitrary isotropic kernel function k as input and creates symbolic expression
 function MultipoleFactorization(kernel, points, max_dofs_per_leaf, precond_param,
                                 trunc_param, to)
-    # @vars r
-    # kernel = k(r) # symbolic kernel
     multi_to_single = Dict() # TODO this doesn't need to be a dict anymore
-    # F_coef_table = Matrix{Union{Nothing, Function}}(nothing, trunc_param+1, trunc_param+1)
-    # G_coef_table = Matrix{Union{Nothing, Function}}(nothing, trunc_param+1, trunc_param+1)
-    # radial_fun_ranks = zeros(Int64, trunc_param+1)
-
     d = length(points[1])
     transform_coef_table = transformation_coefficients(d, trunc_param)
     normalizer_table = Matrix{Float64}(undef, trunc_param+1, length(get_multiindices(d,trunc_param)))
     tree = initialize_tree(points, max_dofs_per_leaf)
 
     fact = MultipoleFactorization(kernel, precond_param, trunc_param, to,
-        # get_derivs(kernel, trunc_param),
-        multi_to_single,
-        # F_coef_table, G_coef_table, radial_fun_ranks,
-        transform_coef_table, normalizer_table, tree)
-
-    # @timeit fact.to "Populate F, G tables" fill_f_g_tables!(fact)
+                    multi_to_single, transform_coef_table, normalizer_table, tree)
     fill_index_mapping_tables!(fact)
     @timeit fact.to "Populate normalizer table" fill_normalizer_table!(fact)
     @timeit fact.to "Populate transformation table" compute_transformation_mats!(fact)
@@ -78,8 +61,7 @@ function fill_normalizer_table!(fact::MultipoleFactorization)
     k = fact.trunc_param
     for k_idx in 0:fact.trunc_param
         multiindices = get_multiindices(d, k_idx)
-        for h_idx in 1:length(multiindices)
-            h = multiindices[h_idx]
+        for (h_idx, h) in enumerate(multiindices)
             h[end] = abs(h[end])
             normalizer!(fact, k_idx, h, h_idx)
         end
@@ -168,7 +150,7 @@ function transformation_mats_kernel!(fact::MultipoleFactorization, leaf, timeit:
 end
 
 function normalizer!(fact, k, h, h_idx) # TODO no need to call this twice, just get rid of sqrt, move to one harmonic call?
-    m_vec = vcat(k,h) #TODO fix this hack
+    m_vec = vcat(k,h) # TODO fix this hack
     d = length(m_vec)+1
     N2 = 2π
     for j in 1:(d-2)
@@ -266,7 +248,6 @@ function source2outgoing(fact::MultipoleFactorization, recentered_src::AbstractV
         # for i in k:2:(k+2*(fact.radial_fun_ranks[k+1]-1))
         for i in k:2:fact.trunc_param
             if timeit
-                # @timeit fact.to "g_coefs" G_coefs = map(fact.G_coef_table[k+1, i+1], norms)
                 gfun = G(k, i)
                 @timeit fact.to "g_coefs" @. G_coefs = gfun(norms)
             else
@@ -312,10 +293,8 @@ function outgoing2incoming(fact::MultipoleFactorization, recentered_tgt::Abstrac
         # for i in k:2:(k+2*(fact.radial_fun_ranks[k+1]-1))
         for i in k:2:fact.trunc_param
             if timeit
-                # @timeit fact.to "f_coefs" F_coefs = map(fact.F_coef_table[k+1, i+1], norms) # bottleneck
                 @timeit fact.to "f_coefs" F_coefs = ffun(k, i)
             else
-                # F_coefs = map(fact.F_coef_table[k+1, i+1], norms)
                 F_coefs = ffun(k, i)
             end
             for h_idx in 1:length(multiindices)
@@ -336,7 +315,6 @@ end
 #     harmonic = computeYlm((pi/2)-spher.ϕ,spher.θ, lmax=k,  SHType = SphericalHarmonics.RealHarmonics())[end-k+h]
 #     return harmonic*(norm(rj)^(k))
 # end
-#
 #
 # function M(k,h,ra, alpha)
 #     spher = SphericalFromCartesian()(ra)

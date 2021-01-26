@@ -24,29 +24,27 @@ y = rand(N)
 
 # Convert from symbolic expression to Julia function
 using FastKernelTransform: FmmMatrix, factorize
+using CovarianceFunctions
+using CovarianceFunctions: EQ, Exp, Cauchy, Lengthscale
 
 # define kernels
-se(r) = exp(-r^2)
-se(x, y) = se(norm(x-y))
-ek(r) = exp(-r) # exponential kernel
-ek(x, y) = ek(norm(x-y))
 es(r) = r == 0 ? typeof(r)(1e3) : inv(r)
 es(x, y) = es(norm(x-y))
 
-cauchy(r) = inv(1+r^2)
-cauchy(x, y) = cauchy(norm(x-y))
+eq = Lengthscale(EQ(), 1/sqrt(2)) # with short lengthscale, not as accurate?
+kernels = (es, eq, Exp(), Cauchy())
 
-kernels = (es, se, ek, cauchy)
-names = ["Electro", "SE", "Exp", "Cauchy"]
+names = ["Electro", "EQ", "Exp", "Cauchy"]
 tol = 5e-5
-@testset "MultipoleFactorization" begin
-    for k in kernels
+@testset "factorize and mul!" begin
+    for (i, k) in enumerate(kernels)
+        # println(names[i])
         mat = FmmMatrix(k, x, max_dofs_per_leaf, precond_param, trunc_param, to)
         fact = factorize(mat)
         kern_mat  = k.(x, permutedims(x))
         bbar = fact * y
         b = kern_mat * y
-        @test norm(b-bbar)/norm(b) < tol
+        @test norm(b-bbar) / norm(b) < tol
     end
 end
 
