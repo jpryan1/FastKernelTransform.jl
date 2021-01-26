@@ -102,8 +102,8 @@ function compute_transformation_mats!(fact::MultipoleFactorization)
     @timeit fact.to "parallel transformation_mats" begin
         @sync for leaf in allleaves(fact.tree.root)
             if !isempty(leaf.data.points)
-                # @spawn transformation_mats_kernel!(fact, leaf, false) # have to switch off timers if parallel
-                transformation_mats_kernel!(fact, leaf, true) # have to switch off timers if parallel
+                @spawn transformation_mats_kernel!(fact, leaf, false) # have to switch off timers if parallel
+                # transformation_mats_kernel!(fact, leaf, true) # have to switch off timers if parallel
             end
         end
     end
