@@ -56,8 +56,9 @@ f["generators"] = gen_names
 nexperiments = 1 # number of repetitions per experiment
 f["nexperiments"] = nexperiments
 
-kernel(r) = exp(-r) # IDEA could loop through kernels
-kernel(x, y) = kernel(norm(x-y))
+using CovarianceFunctions
+using CovarianceFunctions: Exp, EQ, MaternP, Matern, Cauchy
+kernel = Exp()
 
 # FKT parameters # IDEA could loop through hyper-parameters
 max_dofs_per_leaf = 256  # When to stop in tree decomposition
