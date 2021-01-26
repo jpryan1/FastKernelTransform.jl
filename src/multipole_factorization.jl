@@ -1,16 +1,26 @@
-mutable struct FmmMatrix{K}
+mutable struct FmmMatrix{K, V<:AbstractVector{<:AbstractVector{<:Real}}} # IDEA: use CovarianceFunctions.Gramian
     kernel::K
-    points::Array{Array{Float64,1},1}
+    points::V
     max_dofs_per_leaf::Int64
     precond_param::Int64
     trunc_param::Int64
     to::TimerOutput
 end
 
-
-function LinearAlgebra.factorize(mat::FmmMatrix)
+# fast kernel transform
+function fkt(mat::FmmMatrix)
     return MultipoleFactorization(mat.kernel, mat.points, mat.max_dofs_per_leaf,
                             mat.precond_param, mat.trunc_param, mat.to)
+end
+
+# factorize only calls fkt if it is worth it
+function LinearAlgebra.factorize(mat::FmmMatrix)
+    if length(mat.points) < mat.max_dofs_per_leaf
+        x = math.points
+        return factorize(k.(x, permutedims(x)))
+    else
+        return fkt(mat)
+    end
 end
 
 mutable struct MultipoleFactorization{K, TO<:TimerOutput, MST, TCT, NT, TT<:Tree} # DT<:Vector, FT, RFT<:AbstractVector{<:Int}
@@ -35,10 +45,10 @@ end
 
 # TODO: max_dofs_per_leaf < precond_param
 # takes arbitrary isotropic kernel function k as input and creates symbolic expression
-function MultipoleFactorization(k, points, max_dofs_per_leaf, precond_param,
+function MultipoleFactorization(kernel, points, max_dofs_per_leaf, precond_param,
                                 trunc_param, to)
-    @vars r
-    kernel = k(r)
+    # @vars r
+    # kernel = k(r) # symbolic kernel
     multi_to_single = Dict() # TODO this doesn't need to be a dict anymore
     # F_coef_table = Matrix{Union{Nothing, Function}}(nothing, trunc_param+1, trunc_param+1)
     # G_coef_table = Matrix{Union{Nothing, Function}}(nothing, trunc_param+1, trunc_param+1)
@@ -49,7 +59,7 @@ function MultipoleFactorization(k, points, max_dofs_per_leaf, precond_param,
     normalizer_table = Matrix{Float64}(undef, trunc_param+1, length(get_multiindices(d,trunc_param)))
     tree = initialize_tree(points, max_dofs_per_leaf)
 
-    fact = MultipoleFactorization(k, precond_param, trunc_param, to,
+    fact = MultipoleFactorization(kernel, precond_param, trunc_param, to,
         # get_derivs(kernel, trunc_param),
         multi_to_single,
         # F_coef_table, G_coef_table, radial_fun_ranks,
@@ -100,7 +110,8 @@ function compute_transformation_mats!(fact::MultipoleFactorization)
         if length(node.data.point_indices) < fact.precond_param
             tgt_points = node.data.points
             @timeit fact.to "get diag inv for precond" begin
-                node.data.diag_block = factorize(fact.kernel.(tgt_points, permutedims(tgt_points)))
+                # node.data.diag_block = factorize(fact.kernel.(tgt_points, permutedims(tgt_points)))
+                node.data.diag_block = cholesky(fact.kernel.(tgt_points, permutedims(tgt_points)))
             end
         else
             append!(node_queue, children(node))

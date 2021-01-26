@@ -17,6 +17,7 @@ using TaylorSeries
 using TimerOutputs
 
 export MultipoleFactorization
+export fkt # fast kernel transform
 
 include("util.jl")
 include("derivatives.jl")

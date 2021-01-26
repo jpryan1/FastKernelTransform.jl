@@ -15,8 +15,8 @@ mutable struct NodeData{PT<:AbstractVector{<:AbstractVector{<:Real}},
   # TODO is_precond_node may be unnecessary
   dimension::Int
   level::Int
-  points::PT
-  point_indices::PIT # why?
+  points::PT # how to keep this type general?
+  point_indices::PIT 
   near_indices::PIT
   neighbors::NT
   far_nodes::NT
@@ -35,7 +35,7 @@ function NodeData(isprecond, dimension, level, points, point_indices = collect(1
   far_nodes = Vector{Cell}(undef, 0)
   outgoing = zeros(Complex{Float64}, 0)
   near_mat = zeros(0, 0)
-  diag_block = cholesky(zeros(0, 0))
+  diag_block = cholesky(zeros(0, 0)) # TODO this forces the DT type in NodeData to be a Cholesky, should it?
   s2o = zeros(Complex{Float64}, 0, 0)
   o2i = fill(s2o, 0)
   NodeData(isprecond, dimension, level, points, point_indices,
