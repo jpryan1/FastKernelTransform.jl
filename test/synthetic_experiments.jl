@@ -36,8 +36,8 @@ to = TimerOutput()
 # to save results
 f = h5open("FKT_synthetic_experiments.h5", "w")
 
-sizes = @. 1024 * 2^(1:2)
-dimensions = [3]
+sizes = @. 2048 * 2^(1:2)
+dimensions = [3, 4]
 f["sizes"] = sizes
 f["dimensions"] = dimensions
 
@@ -56,8 +56,9 @@ f["generators"] = gen_names
 nexperiments = 1 # number of repetitions per experiment
 f["nexperiments"] = nexperiments
 
-kernel(r) = exp(-r) # IDEA could loop through kernels
-kernel(x, y) = kernel(norm(x-y))
+using CovarianceFunctions
+using CovarianceFunctions: Exp, EQ, MaternP, Matern, Cauchy
+kernel = Exp()
 
 # FKT parameters # IDEA could loop through hyper-parameters
 max_dofs_per_leaf = 256  # When to stop in tree decomposition
@@ -77,6 +78,7 @@ for k in eachindex(generators)
     println(gen_names[k])
     for j in eachindex(dimensions)
         d = dimensions[j]
+        println("dim ", d)
         for i in eachindex(sizes)
             n = sizes[i]
             bl = zeros(n) # result vector for lazy matrix
