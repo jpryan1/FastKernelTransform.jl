@@ -37,7 +37,7 @@ to = TimerOutput()
 f = h5open("FKT_synthetic_experiments.h5", "w")
 
 sizes = @. 2048 * 2^(1:2)
-dimensions = [3]
+dimensions = [3, 4]
 f["sizes"] = sizes
 f["dimensions"] = dimensions
 
@@ -78,6 +78,7 @@ for k in eachindex(generators)
     println(gen_names[k])
     for j in eachindex(dimensions)
         d = dimensions[j]
+        println("dim ", d)
         for i in eachindex(sizes)
             n = sizes[i]
             bl = zeros(n) # result vector for lazy matrix
