@@ -100,7 +100,7 @@ end
 end
 
 # iterative Chebyshev of the first or second kind
-function chebyshev(n::Int, x::Real, kind::Val{T} = Val(1)) where {T}
+@inline function chebyshev(n::Int, x::Real, kind::Val{T} = Val(1)) where {T}
     C1 = one(x)
     n == 0 && return C1
     C2 = T*x

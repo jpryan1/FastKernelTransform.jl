@@ -61,7 +61,8 @@ f["nsamples"] = nsamples
 
 using CovarianceFunctions
 using CovarianceFunctions: Exp, EQ, MaternP, Matern, Cauchy
-kernel = Exp()
+kernels = [Exp(), EQ()]
+
 
 # FKT parameters # IDEA could loop through hyper-parameters
 max_dofs_per_leaf = 256  # When to stop in tree decomposition

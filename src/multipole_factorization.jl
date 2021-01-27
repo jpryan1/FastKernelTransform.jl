@@ -135,43 +135,38 @@ function transformation_mats_kernel!(fact::MultipoleFactorization, leaf, timeit:
     for far_node_idx in eachindex(leaf.data.far_nodes) # IDEA: parallelize?
         far_node = leaf.data.far_nodes[far_node_idx]
         if isempty(far_node.data.points) continue end
-        # @timeit fact.to "far" begin
-            src_points = far_node.data.points
-            center(x) = x - RegionTrees.center(far_node)
-            recentered_tgt = center.(tgt_points)
-            recentered_src = center.(src_points)
-            m = length(leaf.data.point_indices)
-            n = length(far_node.data.point_indices)
+        src_points = far_node.data.points
+        center(x) = x - RegionTrees.center(far_node)
+        recentered_tgt = center.(tgt_points)
+        recentered_src = center.(src_points)
+        m = length(leaf.data.point_indices)
+        n = length(far_node.data.point_indices)
 
-            if isempty(far_node.data.s2o)
-                if timeit
-                    @timeit fact.to "source2outgoing" far_node.data.s2o = source2outgoing(fact, recentered_src)
-                else
-                    far_node.data.s2o = source2outgoing(fact, recentered_src, timeit)
-                end
-            end
-            if(m*num_multipoles + n*num_multipoles < m*n)
-                if timeit
-                    @timeit fact.to "outgoing2incoming" leaf.data.o2i[far_node_idx] = outgoing2incoming(fact, recentered_tgt)
-                else
-                    leaf.data.o2i[far_node_idx] = outgoing2incoming(fact, recentered_tgt, timeit)
-                end
+        if isempty(far_node.data.s2o)
+            if timeit
+                @timeit fact.to "source2outgoing" far_node.data.s2o = source2outgoing(fact, recentered_src)
             else
-                if timeit
-                    @timeit fact.to "outgoing2incoming" leaf.data.o2i[far_node_idx] = fact.kernel.(leaf.data.points, permutedims(far_node.data.points))
-                else
-                    leaf.data.o2i[far_node_idx] =fact.kernel.(leaf.data.points, permutedims(far_node.data.points))
-                end
+                far_node.data.s2o = source2outgoing(fact, recentered_src, timeit)
             end
-
-            # println("o2i: ", size(leaf.data.o2i[far_node_idx]))
-
-        # end
+        end
+        if num_multipoles * (m + n) < m * n
+            if timeit
+                @timeit fact.to "outgoing2incoming" leaf.data.o2i[far_node_idx] = outgoing2incoming(fact, recentered_tgt)
+            else
+                leaf.data.o2i[far_node_idx] = outgoing2incoming(fact, recentered_tgt, timeit)
+            end
+        else
+            if timeit
+                @timeit fact.to "outgoing2incoming" leaf.data.o2i[far_node_idx] = fact.kernel.(leaf.data.points, permutedims(far_node.data.points))
+            else
+                leaf.data.o2i[far_node_idx] = fact.kernel.(leaf.data.points, permutedims(far_node.data.points))
+            end
+        end
     end
 end
 
 function normalizer!(fact, k, h, h_idx) # TODO no need to call this twice, just get rid of sqrt, move to one harmonic call?
-    m_vec = vcat(k,h) # TODO fix this hack
+    m_vec = vcat(k, h) # TODO fix this hack
     d = length(m_vec)+1
     N2 = 2π
     for j in 1:(d-2)
@@ -190,19 +185,114 @@ function normalizer!(fact, k, h, h_idx) # TODO no need to call this twice, just 
     return (N2)
 end
 
+function source2outgoing(fact::MultipoleFactorization, recentered_src::AbstractVector{<:AbstractVector{<:Real}}, timeit::Bool = true)
+    s2o_mat = zeros(Complex{Float64}, length(keys(fact.multi_to_single)), length(recentered_src))
+    n, d, p = length(recentered_src), length(recentered_src[1]), fact.trunc_param
+    rj_hyps = cart2hyp.(recentered_src)
+    if timeit
+        @timeit fact.to "norms" norms = norm.(recentered_src)
+    else
+        norms = norm.(recentered_src)
+    end
+    G_coefs = similar(norms)
+    for k in 0:fact.trunc_param
+        N_k_alpha=1
+        if d > 2
+            N_k_alpha = 1/((d+2k-2)*doublefact(d-4))
+            N_k_alpha = convert(Float64, N_k_alpha)
+            N_k_alpha *= iseven(d) ? (2π)^(d/2) : 2*(2π)^((d-1)/2)
+        end
+        if timeit
+            @timeit fact.to "hypharmcalc" hyp_harms = hyperharms(fact, k, rj_hyps, true)
+            @timeit fact.to "multiindices" multiindices = get_multiindices(d, k)
+            @timeit fact.to "pows" pows = norms .^ (k)
+        else
+            hyp_harms = hyperharms(fact, k, rj_hyps, true)
+            multiindices = get_multiindices(d, k)
+            pows = norms .^ (k)
+        end
+
+        # for i in k:2:(k+2*(fact.radial_fun_ranks[k+1]-1))
+        for i in k:2:fact.trunc_param
+            if timeit
+                gfun = G(k, i)
+                @timeit fact.to "g_coefs" @. G_coefs = gfun(norms)
+            else
+                gfun = G(k, i)
+                @. G_coefs = gfun(norms)
+            end
+            ind = [fact.multi_to_single[(k, multiindices[h_idx], i)] for h_idx in 1:length(multiindices)]
+            if timeit
+                @timeit fact.to "store" @. s2o_mat[ind, :] = N_k_alpha * conj(hyp_harms) * G_coefs' * pows'
+            else
+                @. s2o_mat[ind, :] = N_k_alpha * conj(hyp_harms) * G_coefs' * pows'
+            end
+        end
+    end
+    return s2o_mat
+end
+
+# IDEA: adaptive trunc_param, based on distance?
+function outgoing2incoming(fact::MultipoleFactorization, recentered_tgt::AbstractVector{<:AbstractVector{<:Real}}, timeit::Bool = true)
+    n, d, p = length(recentered_tgt), length(recentered_tgt[1]), fact.trunc_param
+    o2i_mat = zeros(Complex{Float64}, length(recentered_tgt), length(keys(fact.multi_to_single)))
+    if timeit
+        @timeit fact.to "norms" norms = norm.(recentered_tgt)
+        @timeit fact.to "hyps" ra_hyps = cart2hyp.(recentered_tgt)
+        @timeit fact.to "ffun" ffun = get_F(fact, norms)
+    else
+        norms = norm.(recentered_tgt)
+        ra_hyps = map(cart2hyp, recentered_tgt)
+        ffun = get_F(fact, norms)
+    end
+    F_coefs = similar(norms)
+    for k in 0:fact.trunc_param
+        if timeit
+            @timeit fact.to "multiindices" multiindices = get_multiindices(d, k)
+            @timeit fact.to "hypharmcalc" hyp_harms = hyperharms(fact, k, ra_hyps, false) # 2-arr from h_idx,a to float
+            @timeit fact.to "denoms" denoms = norms .^ (k+1)
+        else
+            hyp_harms = hyperharms(fact, k, ra_hyps, false)
+            multiindices = get_multiindices(d, k)
+            denoms = norms.^(k+1)
+        end
+        # for i in k:2:(k+2*(fact.radial_fun_ranks[k+1]-1))
+        for i in k:2:fact.trunc_param
+            if timeit
+                @timeit fact.to "f_coefs" F_coefs = ffun(k, i)
+            else
+                F_coefs = ffun(k, i)
+            end
+            ind = [fact.multi_to_single[(k, multiindices[h_idx], i)] for h_idx in 1:length(multiindices)]
+            if timeit
+                @timeit fact.to "store" @. o2i_mat[:, ind] = (hyp_harms' / denoms) * F_coefs
+            else
+                @. o2i_mat[:, ind] = (hyp_harms' / denoms) * F_coefs
+            end
+        end
+    end
+    return o2i_mat
+end
+
 # IDEA: change pt_hyps from vec of vec to matrix for cache locality
-function hyperharms(fact, k, pt_hyps, use_normalizer)  # 2-arr from h_idx, a to float
-    # TODO write unit test to check that addition theorem is respected
-    d = length(pt_hyps[1])
-    multiindices = get_multiindices(d, k)
+function hyperharms(fact, k::Int, pt_hyps::AbstractVector, use_normalizer::Bool,
+                    multiindices = get_multiindices(length(pt_hyps[1]), k))
     harms = Matrix{Complex{Float64}}(undef, length(multiindices), length(pt_hyps))
-    if d==2
-        if(k==0)
-            harms[1, :] = ones(length(pt_hyps))
+    hyperharms!(harms, fact, k, pt_hyps, use_normalizer, multiindices)
+end
+
+function hyperharms!(harms, fact, k::Int, pt_hyps::AbstractVector, use_normalizer::Bool,
+                     multiindices = get_multiindices(length(pt_hyps[1]), k))
+    # TODO write unit test to check that addition theorem is respected
+    size(harms) == (length(multiindices), length(pt_hyps)) || throw(DimensionMismatch("$(size(harms)), $((length(multiindices), length(pt_hyps)))"))
+    d = length(pt_hyps[1])
+    if d == 2
+        if k == 0
+            @. harms[1, :] = 1
             return harms
         else
-            harms[1, :] = map((x)->sin.(k*x[2]), pt_hyps)
-            harms[2, :] = map((x)->cos.(k*x[2]), pt_hyps)
+            harms[1, :] .= ((x)->sin(k*x[2])).(pt_hyps)
+            harms[2, :] .= ((x)->cos(k*x[2])).(pt_hyps)
             return harms
         end
     end
@@ -248,99 +338,6 @@ function hyperharms(fact, k, pt_hyps, use_normalizer)  # 2-arr from h_idx, a to 
         end
     end
     return harms
-end
-
-function source2outgoing(fact::MultipoleFactorization, recentered_src::AbstractVector{<:AbstractVector{<:Real}}, timeit::Bool = true)
-    s2o_mat = zeros(Complex{Float64}, length(keys(fact.multi_to_single)), length(recentered_src))
-    d = length(recentered_src[1])
-    rj_hyps = map(cart2hyp, recentered_src)
-
-    if timeit
-        @timeit fact.to "norms" norms = norm.(recentered_src)
-    else
-        norms = norm.(recentered_src)
-    end
-    G_coefs = similar(norms)
-    for k in 0:fact.trunc_param
-        N_k_alpha=1
-        if(d>2)
-            N_k_alpha = 1/((d+2k-2)*doublefact(d-4))
-            N_k_alpha = convert(Float64, N_k_alpha)
-            N_k_alpha *= iseven(d) ? (2π)^(d/2) : 2*(2π)^((d-1)/2)
-        end
-        if timeit
-            @timeit fact.to "hypharmcalc" hyp_harms = hyperharms(fact, k, rj_hyps, true)
-            @timeit fact.to "multiindices" multiindices = get_multiindices(d, k)
-            @timeit fact.to "pows" pows = norms .^ (k)
-        else
-            hyp_harms = hyperharms(fact, k, rj_hyps, true)
-            multiindices = get_multiindices(d, k)
-            pows = norms .^ (k)
-        end
-
-        # for i in k:2:(k+2*(fact.radial_fun_ranks[k+1]-1))
-        for i in k:2:fact.trunc_param
-            if timeit
-                gfun = G(k, i)
-                @timeit fact.to "g_coefs" @. G_coefs = gfun(norms)
-            else
-                gfun = G(k, i)
-                @. G_coefs = gfun(norms)
-            end
-            for h_idx in 1:length(multiindices)
-                if timeit
-                    @timeit fact.to "store" @. s2o_mat[fact.multi_to_single[(k,multiindices[h_idx],i)], :] = N_k_alpha * conj(hyp_harms[h_idx, :]) * G_coefs * pows
-                else
-                    @. s2o_mat[fact.multi_to_single[(k,multiindices[h_idx],i)], :] = N_k_alpha * conj(hyp_harms[h_idx, :]) * G_coefs * pows
-                end
-            end
-        end
-    end
-    return s2o_mat
-end
-
-# IDEA: adaptive trunc_param, based on distance?
-function outgoing2incoming(fact::MultipoleFactorization, recentered_tgt::AbstractVector{<:AbstractVector{<:Real}}, timeit::Bool = true)
-    d = length(recentered_tgt[1])
-    o2i_mat = zeros(Complex{Float64}, length(recentered_tgt), length(keys(fact.multi_to_single)))
-    if timeit
-        @timeit fact.to "norms" norms = norm.(recentered_tgt)
-        @timeit fact.to "hyps" ra_hyps = map(cart2hyp, recentered_tgt)
-        @timeit fact.to "ffun" ffun = get_F(fact, norms)
-    else
-        norms = norm.(recentered_tgt)
-        ra_hyps = map(cart2hyp, recentered_tgt)
-        ffun = get_F(fact, norms)
-    end
-    F_coefs = similar(norms)
-    for k in 0:fact.trunc_param
-        if timeit
-            @timeit fact.to "hypharmcalc" hyp_harms = hyperharms(fact, k, ra_hyps, false) # 2-arr from h_idx,a to float
-            @timeit fact.to "multiindices" multiindices = get_multiindices(d, k)
-            @timeit fact.to "denoms" denoms = norms .^ (k+1)
-        else
-            hyp_harms = hyperharms(fact, k, ra_hyps, false)
-            multiindices = get_multiindices(d, k)
-            denoms = norms.^(k+1)
-        end
-        # for i in k:2:(k+2*(fact.radial_fun_ranks[k+1]-1))
-        for i in k:2:fact.trunc_param
-            if timeit
-                @timeit fact.to "f_coefs" F_coefs = ffun(k, i)
-            else
-                F_coefs = ffun(k, i)
-            end
-            for h_idx in 1:length(multiindices)
-                if timeit
-                    @timeit fact.to "store" @. o2i_mat[:, fact.multi_to_single[(k,multiindices[h_idx],i)]] = (hyp_harms[h_idx, :] / denoms) * F_coefs
-                else
-                    @. o2i_mat[:, fact.multi_to_single[(k,multiindices[h_idx],i)]] = (hyp_harms[h_idx, :] / denoms) * F_coefs
-                end
-            end
-
-        end
-    end
-    return o2i_mat
 end
 
 # function L(k,h,rj)

@@ -20,7 +20,7 @@ function mul!(y::AbstractVector, fact::MultipoleFactorization, x::AbstractVector
                 if isempty(far_node.data.points) continue end
                 m = length(leaf.data.point_indices)
                 n = length(far_node.data.point_indices)
-                if num_multipoles * (m + n) < m*n # true if fast multiply is more efficient
+                if num_multipoles * (m + n) < m * n # true if fast multiply is more efficient
                     if isempty(far_node.data.outgoing) # IDEA: have this pre-allocated in compute_transformation_mats
                         far_node.data.outgoing = far_node.data.s2o * x[far_node.data.point_indices]
                     end

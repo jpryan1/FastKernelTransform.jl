@@ -6,12 +6,12 @@ using TimerOutputs
 # Create the timer object
 to = TimerOutput()
 
-N                 = 8192  # Number of points
+N                 = 2*8192  # Number of points
 max_dofs_per_leaf = 512  # When to stop in tree decomposition
 precond_param     = 512  # Size of diag blocks to inv for preconditioner
 
 trunc_param = 5
-dimension   = 4
+dimension   = 3
 # Parameter used for Gegenbauer polynomials
 alpha = dimension/2 - 1
 # Lookup table for transformation coefficients
@@ -39,15 +39,17 @@ end
 # kern = k(r)
 # kernel_fun = get_kernel_fun(kern)
 # @timeit to "Form dense matrix symbolic" kern_mat  = kernel_fun.(points, permutedims(points))
-
-@timeit to "Form dense matrix direct" begin
-    @timeit to "allocation" kern_mat = zeros(length(points), length(points))
-    @timeit to "computation" kern_mat .= kernel.(points, permutedims(points))
-end
 @timeit to "Factorization matvec "       bbar      = fact * x
-@timeit to "Dense matvec "      b         = kern_mat * x
-G = gramian(kernel, points)
-@timeit to "Lazy matvec " mul!(b, G, x)
+compare = false
+if compare
+    @timeit to "Form dense matrix direct" begin
+        @timeit to "allocation" kern_mat = zeros(length(points), length(points))
+        @timeit to "computation" kern_mat .= kernel.(points, permutedims(points))
+    end
+    @timeit to "Dense matvec "      b         = kern_mat * x
+    G = gramian(kernel, points)
+    @timeit to "Lazy matvec " mul!(b, G, x)
+end
 
 # println("Factorization matvec error ", norm(b-bbar)/norm(b))
 # @timeit to "Fact approx solve"  xbar      = fact \ b
