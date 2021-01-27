@@ -6,6 +6,7 @@ import LinearAlgebra: *, mul!, \
 \(fact::MultipoleFactorization, b::AbstractVector) = conj_grad(fact, b)
 
 function mul!(y::AbstractVector, fact::MultipoleFactorization, x::AbstractVector)
+    _checksizes(y, fact, x)
     num_multipoles = binomial(fact.trunc_param+fact.tree.dimension, fact.trunc_param)
 
     @sync for leaf in allleaves(fact.tree.root)
@@ -36,6 +37,17 @@ function mul!(y::AbstractVector, fact::MultipoleFactorization, x::AbstractVector
         cell.data.outgoing = []
     end
     return y
+end
+
+# makes sure sizes of arguments for matrix multiplication agree
+function _checksizes(y::AbstractVector, fact::MultipoleFactorization, x::AbstractVector)
+    if size(fact, 2) ≠ length(x)
+        s = "second dimension of fact, $(size(fact, 2)), does not match length of x, $(length(x))"
+        throw(DimensionMismatch(s))
+    elseif length(y) ≠ size(fact, 1)
+         s = "first dimension of fact, $(size(fact, 1)), does not match length of y, $(length(y))"
+         throw(DimensionMismatch(s))
+    end
 end
 
 function conj_grad(fact::MultipoleFactorization, b::Array{Float64, 1})

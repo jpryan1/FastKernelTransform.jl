@@ -7,11 +7,12 @@ gaussian_data(n, d) = [randn(d) for _ in 1:n]
 # number of centers c
 # σ is std of data around centers
 function gaussian_mixture_data(n::Int, c::Int, d::Int, σ::Real)
+    nc = Int(floor(n/c))
     centers = gaussian_data(c, d)
-    data = zeros(d, n*c)
+    data = zeros(d, nc*c)
     for (i, μ) in enumerate(centers)
-        ind_i = n*(i-1)+1:n*i
-        data[:, ind_i] = @. μ + σ * $randn(d, n)
+        ind_i = nc*(i-1)+1:nc*i
+        data[:, ind_i] = @. μ + σ * $randn(d, nc)
     end
     return [copy(c) for c in eachcol(data)]
 end
@@ -36,25 +37,27 @@ to = TimerOutput()
 # to save results
 f = h5open("FKT_synthetic_experiments.h5", "w")
 
-sizes = @. 2048 * 2^(1:2)
-dimensions = [3, 4]
+sizes = @. 2048 * 2^(1:3)
+dimensions = [3] #, 4]
 f["sizes"] = sizes
 f["dimensions"] = dimensions
 
 σ = .2
 c = 8
-gm_data(n, d) = gaussian_mixture_data(Int(floor(n/c)), d, c, σ)
+gm_data(n, d) = gaussian_mixture_data(n, c, d, σ)
 create_group(f, "mixture parameters")
 g = f["mixture parameters"]
 g["c"] = 8 # number of centers
 g["sigma"] = σ # std of clusters
 
-generators = (uniform_data, gaussian_data) #,  gm_data)
-gen_names = ["uniform", "gaussian"] #, "mixture"]
+generators = (uniform_data, gaussian_data, gm_data)
+gen_names = ["uniform", "gaussian", "mixture"]
 f["generators"] = gen_names
 
-nexperiments = 1 # number of repetitions per experiment
+nexperiments = 1 # number of different random datasets for each size
 f["nexperiments"] = nexperiments
+nsamples = 1 # number of different runs for benchmarking results
+f["nsamples"] = nsamples
 
 using CovarianceFunctions
 using CovarianceFunctions: Exp, EQ, MaternP, Matern, Cauchy
@@ -81,6 +84,7 @@ for k in eachindex(generators)
         println("dim ", d)
         for i in eachindex(sizes)
             n = sizes[i]
+            println("size ", n)
             bl = zeros(n) # result vector for lazy matrix
             b = zeros(Complex{Float64}, n) # result vector
             y = randn(n) # "charge vector"

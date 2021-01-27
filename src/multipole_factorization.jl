@@ -35,6 +35,7 @@ mutable struct MultipoleFactorization{K, TO<:TimerOutput, MST, TCT, NT, TT<:Tree
   transform_coef_table::TCT # Lookup table for transformation coefficients
   normalizer_table::NT
   tree::TT
+  npoints::Int
 end
 
 # TODO: max_dofs_per_leaf < precond_param
@@ -46,14 +47,16 @@ function MultipoleFactorization(kernel, points, max_dofs_per_leaf, precond_param
     transform_coef_table = transformation_coefficients(d, trunc_param)
     normalizer_table = Matrix{Float64}(undef, trunc_param+1, length(get_multiindices(d,trunc_param)))
     tree = initialize_tree(points, max_dofs_per_leaf)
-
+    npoints = length(points)
     fact = MultipoleFactorization(kernel, precond_param, trunc_param, to,
-                    multi_to_single, transform_coef_table, normalizer_table, tree)
+                    multi_to_single, transform_coef_table, normalizer_table, tree, npoints)
     fill_index_mapping_tables!(fact)
     if(d>2) @timeit fact.to "Populate normalizer table" fill_normalizer_table!(fact) end
     @timeit fact.to "Populate transformation table" compute_transformation_mats!(fact)
     return fact
 end
+Base.size(F::MultipoleFactorization) = (F.npoints, F.npoints)
+Base.size(F::MultipoleFactorization, i::Int) = i > 2 ? 1 : F.npoints
 
 function fill_normalizer_table!(fact::MultipoleFactorization)
     # upper arg ranges from 1//2 up to (2k+d-2)//2, by halves
