@@ -7,6 +7,7 @@ function proj(a, u)
 end
 
 function get_multiindices(d, k)
+    if(d==2) return [[i] for i in 0:(k==0 ? 0 : 1) end
     multiindices = []
     current_index = zeros(Int, d-2)
     for i in 1:(d-2)

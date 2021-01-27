@@ -108,7 +108,8 @@ function fill_f_g_tables!(fact::MultipoleFactorization)
     end
 end
 
-function transform_coef!(fact, j, k, m, alpha)
+function transform_coef!(fact, j, k, m, alpha) #TODO why do we have two of these?
+    println("Called the wrong one")
     if (m < 1 || m > j || k > j || k < mod(j, 2) || isodd(k+j))
         println("Improper pair jkm: ", j, k, m)
         return -1
@@ -219,17 +220,18 @@ function transformation_coefficient(j::Int, k::Int, m::Int, alpha::Real)
         rising = BigInt(1)
         prod_idx = alpha
         while prod_idx <= alpha + div(i+k,2)
-            rising *= prod_idx
+            rising *= max(1,prod_idx)
             prod_idx += 1
         end
         total += (
             ((-1)^div(3i+j+2m, 2))
             *powertwo
             * (1//rising)
-            *(alpha + k)
+            *(alpha==0 ? 2 : (alpha+k))
             *binomial(div(i+j,2), div(j-i, 2))
             *bigfact
             )
     end
+    if (alpha==0 && k==0) total/=2 end
     return total
 end

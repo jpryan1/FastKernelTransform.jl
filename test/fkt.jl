@@ -12,7 +12,7 @@ max_dofs_per_leaf = 128  # When to stop in tree decomposition
 precond_param     = 256  # Size of diag blocks to inv for preconditioner
 
 trunc_param = 10
-dimension   = 3
+dimension   = 2
 # Parameter used for Gegenbauer polynomials
 alpha = dimension/2 - 1
 # Lookup table for transformation coefficients
@@ -32,9 +32,13 @@ es(r) = r == 0 ? typeof(r)(1e3) : inv(r)
 es(x, y) = es(norm(x-y))
 
 eq = Lengthscale(EQ(), 1/sqrt(2)) # with short lengthscale, not as accurate?
-kernels = (es, eq, Exp(), Cauchy())
 
-names = ["Electro", "EQ", "Exp", "Cauchy"]
+kernels = [ Exp(), Cauchy()]
+names = [ "Exp", "Cauchy"]
+if(dimension > 2)
+    kernels = (es, eq, Exp(), Cauchy())
+    names = ["Electro", "EQ", "Exp", "Cauchy"]
+end
 tol = 5e-5
 @testset "factorize and mul!" begin
     for (i, k) in enumerate(kernels)

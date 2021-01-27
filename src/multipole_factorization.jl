@@ -50,7 +50,7 @@ function MultipoleFactorization(kernel, points, max_dofs_per_leaf, precond_param
     fact = MultipoleFactorization(kernel, precond_param, trunc_param, to,
                     multi_to_single, transform_coef_table, normalizer_table, tree)
     fill_index_mapping_tables!(fact)
-    @timeit fact.to "Populate normalizer table" fill_normalizer_table!(fact)
+    if(d>2) @timeit fact.to "Populate normalizer table" fill_normalizer_table!(fact) end
     @timeit fact.to "Populate transformation table" compute_transformation_mats!(fact)
     return fact
 end
@@ -145,7 +145,6 @@ function transformation_mats_kernel!(fact::MultipoleFactorization, leaf, timeit:
                 else
                     far_node.data.s2o = source2outgoing(fact, recentered_src, timeit)
                 end
-                # println("s2o: ", size(far_node.data.s2o))
             end
             if(m*num_multipoles + n*num_multipoles < m*n)
                 if timeit
@@ -193,6 +192,16 @@ function hyperharms(fact, k, pt_hyps, use_normalizer)  # 2-arr from h_idx, a to 
     d = length(pt_hyps[1])
     multiindices = get_multiindices(d, k)
     harms = Matrix{Complex{Float64}}(undef, length(multiindices), length(pt_hyps))
+    if d==2
+        if(k==0)
+            harms[1, :] = ones(length(pt_hyps))
+            return harms
+        else
+            harms[1, :] = map((x)->sin.(k*x[2]), pt_hyps)
+            harms[2, :] = map((x)->cos.(k*x[2]), pt_hyps)
+            return harms
+        end
+    end
     sins = map((x)->sin.(x[2:end]), pt_hyps)
     coss = map((x)->cos.(x[2:end]), pt_hyps)
 
@@ -249,10 +258,12 @@ function source2outgoing(fact::MultipoleFactorization, recentered_src::AbstractV
     end
     G_coefs = similar(norms)
     for k in 0:fact.trunc_param
-        N_k_alpha = 1/((d+2k-2)*doublefact(d-4))
-        N_k_alpha = convert(Float64, N_k_alpha)
-        N_k_alpha *= iseven(d) ? (2π)^(d/2) : 2*(2π)^((d-1)/2)
-
+        N_k_alpha=1
+        if(d>2)
+            N_k_alpha = 1/((d+2k-2)*doublefact(d-4))
+            N_k_alpha = convert(Float64, N_k_alpha)
+            N_k_alpha *= iseven(d) ? (2π)^(d/2) : 2*(2π)^((d-1)/2)
+        end
         if timeit
             @timeit fact.to "hypharmcalc" hyp_harms = hyperharms(fact, k, rj_hyps, true)
             @timeit fact.to "multiindices" multiindices = get_multiindices(d, k)
