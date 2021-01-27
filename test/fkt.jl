@@ -37,15 +37,21 @@ kernels = (es, eq, Exp(), Cauchy())
 names = ["Electro", "EQ", "Exp", "Cauchy"]
 tol = 5e-5
 @testset "factorize and mul!" begin
+    fact = 0
     for (i, k) in enumerate(kernels)
         # println(names[i])
         mat = FmmMatrix(k, x, max_dofs_per_leaf, precond_param, trunc_param, to)
         fact = factorize(mat)
+
         kern_mat  = k.(x, permutedims(x))
         bbar = fact * y
         b = kern_mat * y
         @test norm(b-bbar) / norm(b) < tol
     end
+    @test size(fact) == (N, N)
+    @test size(fact, 1) == N
+    @test size(fact, 2) == N
+    @test size(fact, 3) == 1
 end
 
 end # TestFastKernelTransform
