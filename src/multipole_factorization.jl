@@ -23,19 +23,19 @@ function LinearAlgebra.factorize(mat::FmmMatrix)
     end
 end
 
-mutable struct MultipoleFactorization{K, TO<:TimerOutput, MST, TCT, NT, TT<:Tree} # DT<:Vector, FT, RFT<:AbstractVector{<:Int}
-  kernel::K
-  precond_param::Int64
-  trunc_param::Int64
-  to::TO
-  # helper array, converting from (k, h, i) representation of
-  # multipole coefficients to single indices into an array (for efficient
-  # matrix vector products)
-  multi_to_single::MST
-  transform_coef_table::TCT # Lookup table for transformation coefficients
-  normalizer_table::NT
-  tree::TT
-  npoints::Int
+struct MultipoleFactorization{K, TO<:TimerOutput, MST, TCT, NT, TT<:Tree} # DT<:Vector, FT, RFT<:AbstractVector{<:Int}
+    kernel::K
+    precond_param::Int64
+    trunc_param::Int64
+    to::TO
+    # helper array, converting from (k, h, i) representation of
+    # multipole coefficients to single indices into an array (for efficient
+    # matrix vector products)
+    multi_to_single::MST
+    transform_coef_table::TCT # Lookup table for transformation coefficients
+    normalizer_table::NT
+    tree::TT
+    npoints::Int
 end
 
 # TODO: max_dofs_per_leaf < precond_param
@@ -51,10 +51,11 @@ function MultipoleFactorization(kernel, points, max_dofs_per_leaf, precond_param
     fact = MultipoleFactorization(kernel, precond_param, trunc_param, to,
                     multi_to_single, transform_coef_table, normalizer_table, tree, npoints)
     fill_index_mapping_tables!(fact)
-    if(d>2) @timeit fact.to "Populate normalizer table" fill_normalizer_table!(fact) end
+    if d > 2 @timeit fact.to "Populate normalizer table" fill_normalizer_table!(fact) end
     @timeit fact.to "Populate transformation table" compute_transformation_mats!(fact)
     return fact
 end
+
 Base.size(F::MultipoleFactorization) = (F.npoints, F.npoints)
 Base.size(F::MultipoleFactorization, i::Int) = i > 2 ? 1 : F.npoints
 

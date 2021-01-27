@@ -15,8 +15,8 @@ mutable struct NodeData{PT<:AbstractVector{<:AbstractVector{<:Real}},
   # TODO is_precond_node may be unnecessary
   dimension::Int
   level::Int
-  points::PT # how to keep this type general?
-  point_indices::PIT 
+  points::PT # how to keep this type general? (i.e. subarray) + 1d?
+  point_indices::PIT
   near_indices::PIT
   neighbors::NT
   far_nodes::NT
@@ -148,8 +148,9 @@ end
 function initialize_tree(points, max_dofs_per_leaf)
   dimension = length(points[1])
   # Get limits of root node for tree.
-  point_min = -0.01 + minimum(minimum, points)
-  point_max = 0.01 + maximum(maximum, points)
+  delta = 1e-2
+  point_min = minimum(minimum, points) - delta
+  point_max = maximum(maximum, points) + delta
   root_data = NodeData(false, dimension, 1, points)
 
   crnr = [point_min for i in 1:dimension]
