@@ -111,6 +111,9 @@ end
 
 # computational kernel of transformation mats that is run in parallel
 function transformation_mats_kernel!(fact::MultipoleFactorization, leaf, timeit::Bool = true)
+
+    num_multipoles = binomial(fact.trunc_param+fact.tree.dimension, fact.trunc_param)
+
     tgt_points = leaf.data.points
     src_points = copy(tgt_points)
     src_points = vcat(src_points, [neighbor.data.points for neighbor in leaf.data.neighbors]...)
@@ -133,18 +136,33 @@ function transformation_mats_kernel!(fact::MultipoleFactorization, leaf, timeit:
             center(x) = x - RegionTrees.center(far_node)
             recentered_tgt = center.(tgt_points)
             recentered_src = center.(src_points)
+            m = length(leaf.data.point_indices)
+            n = length(far_node.data.point_indices)
+
             if isempty(far_node.data.s2o)
                 if timeit
                     @timeit fact.to "source2outgoing" far_node.data.s2o = source2outgoing(fact, recentered_src)
                 else
                     far_node.data.s2o = source2outgoing(fact, recentered_src, timeit)
                 end
+                # println("s2o: ", size(far_node.data.s2o))
             end
-            if timeit
-                @timeit fact.to "outgoing2incoming" leaf.data.o2i[far_node_idx] = outgoing2incoming(fact, recentered_tgt)
+            if(m*num_multipoles + n*num_multipoles < m*n)
+                if timeit
+                    @timeit fact.to "outgoing2incoming" leaf.data.o2i[far_node_idx] = outgoing2incoming(fact, recentered_tgt)
+                else
+                    leaf.data.o2i[far_node_idx] = outgoing2incoming(fact, recentered_tgt, timeit)
+                end
             else
-                leaf.data.o2i[far_node_idx] = outgoing2incoming(fact, recentered_tgt, timeit)
+                if timeit
+                    @timeit fact.to "outgoing2incoming" leaf.data.o2i[far_node_idx] = fact.kernel.(leaf.data.points, permutedims(far_node.data.points))
+                else
+                    leaf.data.o2i[far_node_idx] =fact.kernel.(leaf.data.points, permutedims(far_node.data.points))
+                end
             end
+
+            # println("o2i: ", size(leaf.data.o2i[far_node_idx]))
+
         # end
     end
 end

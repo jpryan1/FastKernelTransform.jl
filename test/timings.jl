@@ -6,9 +6,9 @@ using TimerOutputs
 # Create the timer object
 to = TimerOutput()
 
-N                 = 16000  # Number of points
-max_dofs_per_leaf = 1024  # When to stop in tree decomposition
-precond_param     = 2048  # Size of diag blocks to inv for preconditioner
+N                 = 8192  # Number of points
+max_dofs_per_leaf = 512  # When to stop in tree decomposition
+precond_param     = 512  # Size of diag blocks to inv for preconditioner
 
 trunc_param = 5
 dimension   = 4

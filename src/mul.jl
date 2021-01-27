@@ -6,6 +6,8 @@ import LinearAlgebra: *, mul!, \
 \(fact::MultipoleFactorization, b::AbstractVector) = conj_grad(fact, b)
 
 function mul!(y::AbstractVector, fact::MultipoleFactorization, x::AbstractVector)
+    num_multipoles = binomial(fact.trunc_param+fact.tree.dimension, fact.trunc_param)
+
     @sync for leaf in allleaves(fact.tree.root)
         if isempty(leaf.data.points) continue end
         @spawn begin
@@ -15,12 +17,18 @@ function mul!(y::AbstractVector, fact::MultipoleFactorization, x::AbstractVector
             for far_node_idx in eachindex(leaf.data.far_nodes)
                 far_node = leaf.data.far_nodes[far_node_idx]
                 if isempty(far_node.data.points) continue end
-
-                if isempty(far_node.data.outgoing) # IDEA: have this pre-allocated in compute_transformation_mats
-                    far_node.data.outgoing = far_node.data.s2o * x[far_node.data.point_indices]
+                m = length(leaf.data.point_indices)
+                n = length(far_node.data.point_indices)
+                if(m*num_multipoles + n*num_multipoles < m*n)
+                    if isempty(far_node.data.outgoing) # IDEA: have this pre-allocated in compute_transformation_mats
+                        far_node.data.outgoing = far_node.data.s2o * x[far_node.data.point_indices]
+                    end
+                    xi = far_node.data.outgoing
+                else
+                    xi = x[far_node.data.point_indices]
                 end
-                xi = far_node.data.outgoing
                 mul!(yi, leaf.data.o2i[far_node_idx], xi, 1, 1)
+
             end
         end
     end
