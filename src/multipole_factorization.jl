@@ -72,6 +72,26 @@ function fill_normalizer_table!(fact::MultipoleFactorization)
     end
 end
 
+function normalizer!(fact, k, h, h_idx) # TODO no need to call this twice, just get rid of sqrt, move to one harmonic call?
+    m_vec = vcat(k, h) # TODO fix this hack
+    d = length(m_vec)+1
+    N2 = 2π
+    for j in 1:(d-2)
+        alpha_j = (d-j-1)//2
+        numer = (sqrt(π)
+                *gamma(alpha_j+m_vec[j+1]+(1//2))
+                *(alpha_j+m_vec[j+1])
+                *factorial(2alpha_j+m_vec[j]+m_vec[j+1]-1))
+        denom = (gamma(alpha_j+m_vec[j+1]+1)
+                *factorial(m_vec[j]-m_vec[j+1])
+                *(alpha_j+m_vec[j])
+                *factorial(2alpha_j+2*m_vec[j+1]-1))
+        N2 *= (numer/denom)
+    end
+    fact.normalizer_table[k+1,h_idx] = (N2)
+    return (N2)
+end
+
 function fill_index_mapping_tables!(fact::MultipoleFactorization)
     counter = 0
     for k in 0:fact.trunc_param
@@ -165,26 +185,6 @@ function transformation_mats_kernel!(fact::MultipoleFactorization, leaf, timeit:
     end
 end
 
-function normalizer!(fact, k, h, h_idx) # TODO no need to call this twice, just get rid of sqrt, move to one harmonic call?
-    m_vec = vcat(k, h) # TODO fix this hack
-    d = length(m_vec)+1
-    N2 = 2π
-    for j in 1:(d-2)
-        alpha_j = (d-j-1)//2
-        numer = (sqrt(π)
-                *gamma(alpha_j+m_vec[j+1]+(1//2))
-                *(alpha_j+m_vec[j+1])
-                *factorial(2alpha_j+m_vec[j]+m_vec[j+1]-1))
-        denom = (gamma(alpha_j+m_vec[j+1]+1)
-                *factorial(m_vec[j]-m_vec[j+1])
-                *(alpha_j+m_vec[j])
-                *factorial(2alpha_j+2*m_vec[j+1]-1))
-        N2 *= (numer/denom)
-    end
-    fact.normalizer_table[k+1,h_idx] = (N2)
-    return (N2)
-end
-
 function source2outgoing(fact::MultipoleFactorization, recentered_src::AbstractVector{<:AbstractVector{<:Real}}, timeit::Bool = true)
     s2o_mat = zeros(Complex{Float64}, length(keys(fact.multi_to_single)), length(recentered_src))
     n, d, p = length(recentered_src), length(recentered_src[1]), fact.trunc_param
@@ -195,6 +195,8 @@ function source2outgoing(fact::MultipoleFactorization, recentered_src::AbstractV
         norms = norm.(recentered_src)
     end
     G_coefs = similar(norms)
+    max_length_multi = binomial(p+d-1, p) - binomial(p+d-3, p-2) # maximum length of multiindices
+    hyp_harms = zeros(Complex{Float64}, max_length_multi, n) # pre-allocating
     for k in 0:fact.trunc_param
         N_k_alpha=1
         if d > 2
@@ -203,29 +205,26 @@ function source2outgoing(fact::MultipoleFactorization, recentered_src::AbstractV
             N_k_alpha *= iseven(d) ? (2π)^(d/2) : 2*(2π)^((d-1)/2)
         end
         if timeit
-            @timeit fact.to "hypharmcalc" hyp_harms = hyperharms(fact, k, rj_hyps, true)
             @timeit fact.to "multiindices" multiindices = get_multiindices(d, k)
+            hyp_harms_k = @view hyp_harms[1:length(multiindices), :]
+            @timeit fact.to "hypharmcalc" hyperharms!(hyp_harms_k, fact, k, rj_hyps, true, multiindices)
             @timeit fact.to "pows" pows = norms .^ (k)
         else
-            hyp_harms = hyperharms(fact, k, rj_hyps, true)
             multiindices = get_multiindices(d, k)
-            pows = norms .^ (k)
+            hyp_harms_k = @view hyp_harms[1:length(multiindices), :]
+            hyperharms!(hyp_harms_k, fact, k, rj_hyps, true, multiindices)
+            pows = norms.^k
         end
-
         # for i in k:2:(k+2*(fact.radial_fun_ranks[k+1]-1))
         for i in k:2:fact.trunc_param
-            if timeit
-                gfun = G(k, i)
-                @timeit fact.to "g_coefs" @. G_coefs = gfun(norms)
-            else
-                gfun = G(k, i)
-                @. G_coefs = gfun(norms)
-            end
             ind = [fact.multi_to_single[(k, multiindices[h_idx], i)] for h_idx in 1:length(multiindices)]
+            gfun = G(k, i)
             if timeit
-                @timeit fact.to "store" @. s2o_mat[ind, :] = N_k_alpha * conj(hyp_harms) * G_coefs' * pows'
+                @timeit fact.to "g_coefs" @. G_coefs = gfun(norms)
+                @timeit fact.to "store" @. s2o_mat[ind, :] = N_k_alpha * conj(hyp_harms_k) * G_coefs' * pows'
             else
-                @. s2o_mat[ind, :] = N_k_alpha * conj(hyp_harms) * G_coefs' * pows'
+                @. G_coefs = gfun(norms)
+                @. s2o_mat[ind, :] = N_k_alpha * conj(hyp_harms_k) * G_coefs' * pows'
             end
         end
     end
@@ -246,28 +245,29 @@ function outgoing2incoming(fact::MultipoleFactorization, recentered_tgt::Abstrac
         ffun = get_F(fact, norms)
     end
     F_coefs = similar(norms)
+    max_length_multi = binomial(p+d-1, p) - binomial(p+d-3, p-2) # maximum length of multiindices
+    hyp_harms = zeros(Complex{Float64}, max_length_multi, n) # pre-allocating
     for k in 0:fact.trunc_param
         if timeit
             @timeit fact.to "multiindices" multiindices = get_multiindices(d, k)
-            @timeit fact.to "hypharmcalc" hyp_harms = hyperharms(fact, k, ra_hyps, false) # 2-arr from h_idx,a to float
+            hyp_harms_k = @view hyp_harms[1:length(multiindices), :]
+            @timeit fact.to "hypharmcalc" hyperharms!(hyp_harms_k, fact, k, ra_hyps, false, multiindices)
             @timeit fact.to "denoms" denoms = norms .^ (k+1)
         else
-            hyp_harms = hyperharms(fact, k, ra_hyps, false)
             multiindices = get_multiindices(d, k)
+            hyp_harms_k = @view hyp_harms[1:length(multiindices), :]
+            hyperharms!(hyp_harms_k, fact, k, ra_hyps, false, multiindices)
             denoms = norms.^(k+1)
         end
         # for i in k:2:(k+2*(fact.radial_fun_ranks[k+1]-1))
         for i in k:2:fact.trunc_param
-            if timeit
-                @timeit fact.to "f_coefs" F_coefs = ffun(k, i)
-            else
-                F_coefs = ffun(k, i)
-            end
             ind = [fact.multi_to_single[(k, multiindices[h_idx], i)] for h_idx in 1:length(multiindices)]
             if timeit
-                @timeit fact.to "store" @. o2i_mat[:, ind] = (hyp_harms' / denoms) * F_coefs
+                @timeit fact.to "f_coefs" F_coefs = ffun(k, i)
+                @timeit fact.to "store" @. o2i_mat[:, ind] = (hyp_harms_k' / denoms) * F_coefs
             else
-                @. o2i_mat[:, ind] = (hyp_harms' / denoms) * F_coefs
+                F_coefs = ffun(k, i)
+                @. o2i_mat[:, ind] = (hyp_harms_k' / denoms) * F_coefs
             end
         end
     end

@@ -7,19 +7,17 @@ using Test
 
 # Create the timer object
 to = TimerOutput()
-max_dofs_per_leaf = 128  # When to stop in tree decomposition
-precond_param     = 256  # Size of diag blocks to inv for preconditioner
 trunc_param = 10
 
 scale = 10 # scale for random point distribution
 
 using FastKernelTransform: FmmMatrix, factorize
 using CovarianceFunctions
-using CovarianceFunctions: EQ, Exp, Cauchy, Lengthscale
+using CovarianceFunctions: EQ, Exp, Cauchy, Lengthscale, difference
 
 # define kernels
 es(r) = r == 0 ? typeof(r)(1e3) : inv(r)
-es(x, y) = es(norm(x-y))
+es(x, y) = es(norm(difference(x, y)))
 eq = Lengthscale(EQ(), 1/sqrt(2)) # with short lengthscale, not as accurate?
 
 atol = 1e-4
@@ -39,6 +37,8 @@ end
 @testset "factorize and mul!" begin
     @testset "basic properties" begin
         n, d = 128, 2
+        max_dofs_per_leaf = 4 # When to stop in tree decomposition
+        precond_param     = 8  # Size of diag blocks to inv for preconditioner
         x = [scale .* rand(d) for i in 1:n]
         mat = FmmMatrix(Exp(), x, max_dofs_per_leaf, precond_param, trunc_param, to)
         fact = factorize(mat)
@@ -49,9 +49,9 @@ end
     end
 
     @testset "2d" begin
-        n, d = 8000, 2
-        max_dofs_per_leaf = 32  # When to stop in tree decomposition
-        precond_param     = 64  # Size of diag blocks to inv for preconditioner
+        n, d = 128, 2
+        max_dofs_per_leaf = 4 # When to stop in tree decomposition
+        precond_param     = 8  # Size of diag blocks to inv for preconditioner
         trunc_param = 10
         x = [scale .* rand(d) for i in 1:n]
         y = rand(n) # Start with random data values at each point
@@ -61,14 +61,14 @@ end
     end
 
     @testset "3d" begin
-        n, d = 8000, 3
-        max_dofs_per_leaf = 256  # When to stop in tree decomposition
-        precond_param     = 512  # Size of diag blocks to inv for preconditioner
+        n, d = 128, 3
+        max_dofs_per_leaf = 4  # When to stop in tree decomposition
+        precond_param     = 8  # Size of diag blocks to inv for preconditioner
         trunc_param = 10
         x  = [scale .* rand(d) for i in 1:n]
         y = rand(n) # Start with random data values at each point
-        kernels = (es, eq, Exp(), Cauchy())
-        names = ["Electro", "EQ", "Exp", "Cauchy"]
+        kernels = (eq, Exp(), Cauchy()) # (es, eq, Exp(), Cauchy())
+        names = ["EQ", "Exp", "Cauchy"] # ["Electro", "EQ", "Exp", "Cauchy"]
         fkt_test(kernels, x, y, max_dofs_per_leaf, precond_param, trunc_param, to)
     end
 end

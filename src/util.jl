@@ -7,12 +7,10 @@ function proj(a, u)
 end
 
 function get_multiindices(d, k)
-    if(d==2) return [[i] for i in 0:(k==0 ? 0 : 1)] end
-    multiindices = []
-    current_index = zeros(Int, d-2)
-    for i in 1:(d-2)
-        current_index[i]= 0
-    end
+    if d == 2 return [@SVector [i] for i in 0 : (k==0 ? 0 : 1)] end
+    current_index = @MVector zeros(Int, d-2) # mutable static array
+    T = typeof(current_index)
+    multiindices = zeros(T, 0)
     push!(multiindices, copy(current_index))
     while true
         current_index[(d-2)] += 1
@@ -25,16 +23,14 @@ function get_multiindices(d, k)
         if current_index[1] > k
             break
         end
-        push!(multiindices,copy(current_index))
+        push!(multiindices, copy(current_index))
         if current_index[d-2] != 0
-            current_index[d-2]*=-1
-            push!(multiindices,copy(current_index))
-            current_index[d-2]*=-1
+            current_index[d-2] *= -1
+            push!(multiindices, copy(current_index))
+            current_index[d-2] *= -1
         end
-
     end
-    return multiindices
-    # d - 2 indices, ordered, last can be neg
+    return multiindices # d - 2 indices, ordered, last can be neg
 end
 
 # cartesian to hyper-spherical coordinates

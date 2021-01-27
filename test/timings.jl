@@ -12,6 +12,7 @@ precond_param     = 512  # Size of diag blocks to inv for preconditioner
 
 trunc_param = 5
 dimension   = 3
+
 # Parameter used for Gegenbauer polynomials
 alpha = dimension/2 - 1
 # Lookup table for transformation coefficients
