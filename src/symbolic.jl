@@ -220,7 +220,7 @@ function transformation_coefficient(j::Int, k::Int, m::Int, alpha::Real)
         rising = BigInt(1)
         prod_idx = alpha
         while prod_idx <= alpha + div(i+k,2)
-            rising *= max(1,prod_idx)
+            rising *= (prod_idx == 0 ? 1 : prod_idx)
             prod_idx += 1
         end
         total += (
