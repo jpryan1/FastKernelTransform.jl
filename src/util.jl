@@ -82,7 +82,7 @@ function rationalrrqr!(mat)
     return Q, R, perm
 end
 
-# iterative gegenbauer implementation
+# iterative Gegenbauer implementation
 function gegenbauer(α::Real, n::Int, x::Real)
     α, x = promote(α, x)
     gegenbauer(α, n, x)
@@ -94,6 +94,17 @@ end
     C2 = 2α*x
     for k in 2:n
         @fastmath C1, C2 = C2, (2*x*(k+α-1) * C2 - (k+2α-2) * C1) / k
+    end
+    return C2
+end
+
+# iterative Chebyshev of the first or second kind
+function chebyshev(n::Int, x::Real, kind::Val{T} = Val(1)) where {T}
+    C1 = one(x)
+    n == 0 && return C1
+    C2 = T*x
+    for k in 2:n
+        @fastmath C1, C2 = C2, (2x*C2 - C1)
     end
     return C2
 end
