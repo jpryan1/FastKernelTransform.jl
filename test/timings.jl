@@ -8,7 +8,7 @@ to = TimerOutput()
 
 N                 = 2*8192  # Number of points
 max_dofs_per_leaf = 512  # When to stop in tree decomposition
-precond_param     = 512  # Size of diag blocks to inv for preconditioner
+precond_param     = 2max_dofs_per_leaf  # Size of diag blocks to inv for preconditioner
 
 trunc_param = 5
 dimension   = 3

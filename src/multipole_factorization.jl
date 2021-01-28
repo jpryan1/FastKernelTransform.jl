@@ -40,8 +40,9 @@ end
 
 # TODO: max_dofs_per_leaf < precond_param
 # takes arbitrary isotropic kernel function k as input and creates symbolic expression
-function MultipoleFactorization(kernel, points, max_dofs_per_leaf, precond_param,
-                                trunc_param, to)
+# IDEA: convert points to vector of static arrays, dispatch 2d (and 1d) implementation on its type!
+function MultipoleFactorization(kernel, points::AbstractVector{<:AbstractVector{<:Real}},
+                                max_dofs_per_leaf::Int, precond_param::Int, trunc_param::Int, to::TimerOutput)
     multi_to_single = Dict() # TODO this doesn't need to be a dict anymore
     d = length(points[1])
     transform_coef_table = transformation_coefficients(d, trunc_param)
@@ -53,6 +54,7 @@ function MultipoleFactorization(kernel, points, max_dofs_per_leaf, precond_param
     fill_index_mapping_tables!(fact)
     if d > 2 @timeit fact.to "Populate normalizer table" fill_normalizer_table!(fact) end
     @timeit fact.to "Populate transformation table" compute_transformation_mats!(fact)
+    if precond_param > 0 @timeit fact.to "Get diag inv for precond" compute_preconditioner!(fact) end
     return fact
 end
 
@@ -107,28 +109,28 @@ function fill_index_mapping_tables!(fact::MultipoleFactorization)
 end
 
 function compute_transformation_mats!(fact::MultipoleFactorization)
-    dim = fact.tree.dimension
-    alpha = dim//2 - 1
-    # For preconditioner
-    node_queue = [fact.tree.root]
-    while !isempty(node_queue)
-        node = pop!(node_queue)
-        if length(node.data.point_indices) < fact.precond_param
-            tgt_points = node.data.points
-            @timeit fact.to "get diag inv for precond" begin
-                # node.data.diag_block = factorize(fact.kernel.(tgt_points, permutedims(tgt_points)))
-                node.data.diag_block = cholesky(fact.kernel.(tgt_points, permutedims(tgt_points)))
-            end
-        else
-            append!(node_queue, children(node))
-        end
-    end
     @timeit fact.to "parallel transformation_mats" begin
         @sync for leaf in allleaves(fact.tree.root)
             if !isempty(leaf.data.points)
                 @spawn transformation_mats_kernel!(fact, leaf, false) # have to switch off timers if parallel
                 # transformation_mats_kernel!(fact, leaf, true) # have to switch off timers if parallel
             end
+        end
+    end
+end
+
+# For preconditioner
+function compute_preconditioner!(fact::MultipoleFactorization)
+    node_queue = [fact.tree.root]
+    while !isempty(node_queue) # IDEA: parallelize
+        node = pop!(node_queue)
+        if length(node.data.point_indices) < fact.precond_param
+            tgt_points = node.data.points
+            # IDEA: can the kernel matrix be extracted from node.data.near_mat?
+            K = fact.kernel.(tgt_points, permutedims(tgt_points))
+            node.data.diag_block = cholesky!(K) # in-place
+        else
+            append!(node_queue, children(node))
         end
     end
 end
@@ -196,7 +198,7 @@ function source2outgoing(fact::MultipoleFactorization, recentered_src::AbstractV
     end
     G_coefs = similar(norms)
     max_length_multi = binomial(p+d-1, p) - binomial(p+d-3, p-2) # maximum length of multiindices
-    hyp_harms = zeros(Complex{Float64}, max_length_multi, n) # pre-allocating
+    hyp_harms = zeros(Complex{Float64}, max_length_multi, n) # pre-allocating IDEA: reversing indices might improve cache locality
     for k in 0:fact.trunc_param
         N_k_alpha=1
         if d > 2

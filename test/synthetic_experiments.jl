@@ -35,7 +35,7 @@ using TimerOutputs
 to = TimerOutput()
 
 # to save results
-f = h5open("FKT_synthetic_experiments.h5", "w")
+f = h5open("FKT_synthetic_experiments_N_scaling.h5", "w")
 
 sizes = @. 2048 * 2^(1:3)
 dimensions = [3] #, 4]
@@ -65,8 +65,8 @@ kernels = [Exp(), EQ()]
 
 
 # FKT parameters # IDEA could loop through hyper-parameters
-max_dofs_per_leaf = 256  # When to stop in tree decomposition
-precond_param     = 512  # Size of diag blocks to inv for preconditioner
+max_dofs_per_leaf = 512  # When to stop in tree decomposition
+precond_param     = 2max_dofs_per_leaf  # Size of diag blocks to inv for preconditioner
 trunc_param = 5
 f["max_dofs_per_leaf"] = max_dofs_per_leaf
 f["precond_param"] = precond_param
