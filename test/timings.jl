@@ -34,12 +34,7 @@ mat = FmmMatrix(kernel, points, max_dofs_per_leaf, precond_param, trunc_param, t
 @timeit to "Form factorization" begin
     fact = factorize(mat)
 end
-# on my machine, has 2x overhead compared to using k
-# using FastKernelTransform: get_kernel_fun
-# @vars r
-# kern = k(r)
-# kernel_fun = get_kernel_fun(kern)
-# @timeit to "Form dense matrix symbolic" kern_mat  = kernel_fun.(points, permutedims(points))
+
 @timeit to "Factorization matvec "       bbar      = fact * x
 compare = false
 if compare

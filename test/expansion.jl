@@ -2,7 +2,7 @@ module TestExpansion
 using Test
 using LinearAlgebra
 using FastKernelTransform
-using FastKernelTransform: transformation_coefficients, get_F, G, gegenbauer
+using FastKernelTransform: transformation_coefficients, init_F, get_G, gegenbauer
 
 # TODO: loop test over kernels
 # kernel(r) = 1/r
@@ -19,20 +19,24 @@ xp = xpu
 order = 16
 f = transformation_coefficients(d, order);
 
-F = get_F(kernel, order, f)
+get_F = init_F(kernel, order, f)
 r = norm(x)
+rv = [r]
+F = get_F(rv)
 rp = norm(xp)
+rpv = [rp]
 FM = zeros(order+1, order+1)
 for k in 0:order
     for i in k:2:order
-        FM[k+1, i+1] = F(k, i, r)
+        FM[k+1, i+1] = F(k, i)[1]
     end
 end
 
+G = get_G(rpv)
 GM = zeros(size(FM))
 for k in 0:order
     for i in k:2:order
-        GM[k+1, i+1] = G(k, i)(rp)
+        GM[k+1, i+1] = G(k, i)[1]
     end
 end
 

@@ -23,19 +23,23 @@ function LinearAlgebra.factorize(mat::FmmMatrix)
     end
 end
 
-struct MultipoleFactorization{K, TO<:TimerOutput, MST, TCT, NT, TT<:Tree} # DT<:Vector, FT, RFT<:AbstractVector{<:Int}
+# multi_to_single: helper array, converting from (k, h, i) representation of
+# multipole coefficients to single indices into an array (for efficient
+# matrix vector products)
+struct MultipoleFactorization{K, TO<:TimerOutput, MST, NT, TT<:Tree, FT, GT, RT<:AbstractVector{Int}}
     kernel::K
     precond_param::Int64
     trunc_param::Int64
     to::TO
-    # helper array, converting from (k, h, i) representation of
-    # multipole coefficients to single indices into an array (for efficient
-    # matrix vector products)
+
     multi_to_single::MST
-    transform_coef_table::TCT # Lookup table for transformation coefficients
     normalizer_table::NT
     tree::TT
     npoints::Int
+
+    get_F::FT
+    get_G::GT
+    radial_fun_ranks::RT
 end
 
 # TODO: max_dofs_per_leaf < precond_param
@@ -43,16 +47,17 @@ end
 # IDEA: convert points to vector of static arrays, dispatch 2d (and 1d) implementation on its type!
 function MultipoleFactorization(kernel, points::AbstractVector{<:AbstractVector{<:Real}},
                                 max_dofs_per_leaf::Int, precond_param::Int, trunc_param::Int, to::TimerOutput)
-    multi_to_single = Dict() # TODO this doesn't need to be a dict anymore
-    d = length(points[1])
-    transform_coef_table = transformation_coefficients(d, trunc_param)
-    normalizer_table = Matrix{Float64}(undef, trunc_param+1, length(get_multiindices(d,trunc_param)))
-    tree = initialize_tree(points, max_dofs_per_leaf)
     npoints = length(points)
+    dimension = length(points[1])
+    multi_to_single = Dict() # TODO this doesn't need to be a dict anymore
+    normalizer_table = Matrix{Float64}(undef, trunc_param+1, length(get_multiindices(dimension, trunc_param)))
+    tree = initialize_tree(points, max_dofs_per_leaf)
+    get_F, get_G, radial_fun_ranks = init_F_G(kernel, dimension, trunc_param)
     fact = MultipoleFactorization(kernel, precond_param, trunc_param, to,
-                    multi_to_single, transform_coef_table, normalizer_table, tree, npoints)
+                                multi_to_single, normalizer_table, tree, npoints,
+                                get_F, get_G, radial_fun_ranks)
     fill_index_mapping_tables!(fact)
-    if d > 2 @timeit fact.to "Populate normalizer table" fill_normalizer_table!(fact) end
+    if dimension > 2 @timeit fact.to "Populate normalizer table" fill_normalizer_table!(fact) end
     @timeit fact.to "Populate transformation table" compute_transformation_mats!(fact)
     if precond_param > 0 @timeit fact.to "Get diag inv for precond" compute_preconditioner!(fact) end
     return fact
@@ -187,52 +192,6 @@ function transformation_mats_kernel!(fact::MultipoleFactorization, leaf, timeit:
     end
 end
 
-function source2outgoing(fact::MultipoleFactorization, recentered_src::AbstractVector{<:AbstractVector{<:Real}}, timeit::Bool = true)
-    s2o_mat = zeros(Complex{Float64}, length(keys(fact.multi_to_single)), length(recentered_src))
-    n, d, p = length(recentered_src), length(recentered_src[1]), fact.trunc_param
-    rj_hyps = cart2hyp.(recentered_src)
-    if timeit
-        @timeit fact.to "norms" norms = norm.(recentered_src)
-    else
-        norms = norm.(recentered_src)
-    end
-    G_coefs = similar(norms)
-    max_length_multi = binomial(p+d-1, p) - binomial(p+d-3, p-2) # maximum length of multiindices
-    hyp_harms = zeros(Complex{Float64}, max_length_multi, n) # pre-allocating IDEA: reversing indices might improve cache locality
-    for k in 0:fact.trunc_param
-        N_k_alpha=1
-        if d > 2
-            N_k_alpha = 1/((d+2k-2)*doublefact(d-4))
-            N_k_alpha = convert(Float64, N_k_alpha)
-            N_k_alpha *= iseven(d) ? (2π)^(d/2) : 2*(2π)^((d-1)/2)
-        end
-        if timeit
-            @timeit fact.to "multiindices" multiindices = get_multiindices(d, k)
-            hyp_harms_k = @view hyp_harms[1:length(multiindices), :]
-            @timeit fact.to "hypharmcalc" hyperharms!(hyp_harms_k, fact, k, rj_hyps, true, multiindices)
-            @timeit fact.to "pows" pows = norms .^ (k)
-        else
-            multiindices = get_multiindices(d, k)
-            hyp_harms_k = @view hyp_harms[1:length(multiindices), :]
-            hyperharms!(hyp_harms_k, fact, k, rj_hyps, true, multiindices)
-            pows = norms.^k
-        end
-        # for i in k:2:(k+2*(fact.radial_fun_ranks[k+1]-1))
-        for i in k:2:fact.trunc_param
-            ind = [fact.multi_to_single[(k, multiindices[h_idx], i)] for h_idx in 1:length(multiindices)]
-            gfun = G(k, i)
-            if timeit
-                @timeit fact.to "g_coefs" @. G_coefs = gfun(norms)
-                @timeit fact.to "store" @. s2o_mat[ind, :] = N_k_alpha * conj(hyp_harms_k) * G_coefs' * pows'
-            else
-                @. G_coefs = gfun(norms)
-                @. s2o_mat[ind, :] = N_k_alpha * conj(hyp_harms_k) * G_coefs' * pows'
-            end
-        end
-    end
-    return s2o_mat
-end
-
 # IDEA: adaptive trunc_param, based on distance?
 function outgoing2incoming(fact::MultipoleFactorization, recentered_tgt::AbstractVector{<:AbstractVector{<:Real}}, timeit::Bool = true)
     n, d, p = length(recentered_tgt), length(recentered_tgt[1]), fact.trunc_param
@@ -240,15 +199,15 @@ function outgoing2incoming(fact::MultipoleFactorization, recentered_tgt::Abstrac
     if timeit
         @timeit fact.to "norms" norms = norm.(recentered_tgt)
         @timeit fact.to "hyps" ra_hyps = cart2hyp.(recentered_tgt)
-        @timeit fact.to "ffun" ffun = get_F(fact, norms)
+        @timeit fact.to "ffun" ffun = fact.get_F(norms)
     else
         norms = norm.(recentered_tgt)
         ra_hyps = map(cart2hyp, recentered_tgt)
-        ffun = get_F(fact, norms)
+        ffun = fact.get_F(norms)
     end
-    F_coefs = similar(norms)
     max_length_multi = binomial(p+d-1, p) - binomial(p+d-3, p-2) # maximum length of multiindices
     hyp_harms = zeros(Complex{Float64}, max_length_multi, n) # pre-allocating
+    denoms = similar(norms)
     for k in 0:fact.trunc_param
         if timeit
             @timeit fact.to "multiindices" multiindices = get_multiindices(d, k)
@@ -259,7 +218,7 @@ function outgoing2incoming(fact::MultipoleFactorization, recentered_tgt::Abstrac
             multiindices = get_multiindices(d, k)
             hyp_harms_k = @view hyp_harms[1:length(multiindices), :]
             hyperharms!(hyp_harms_k, fact, k, ra_hyps, false, multiindices)
-            denoms = norms.^(k+1)
+            @. denoms = norms^(k+1)
         end
         # for i in k:2:(k+2*(fact.radial_fun_ranks[k+1]-1))
         for i in k:2:fact.trunc_param
@@ -274,6 +233,52 @@ function outgoing2incoming(fact::MultipoleFactorization, recentered_tgt::Abstrac
         end
     end
     return o2i_mat
+end
+
+function source2outgoing(fact::MultipoleFactorization, recentered_src::AbstractVector{<:AbstractVector{<:Real}}, timeit::Bool = true)
+    s2o_mat = zeros(Complex{Float64}, length(keys(fact.multi_to_single)), length(recentered_src))
+    n, d, p = length(recentered_src), length(recentered_src[1]), fact.trunc_param
+    rj_hyps = cart2hyp.(recentered_src)
+    if timeit
+        @timeit fact.to "norms" norms = norm.(recentered_src)
+    else
+        norms = norm.(recentered_src)
+    end
+    gfun = fact.get_G(norms)
+    max_length_multi = binomial(p+d-1, p) - binomial(p+d-3, p-2) # maximum length of multiindices
+    hyp_harms = zeros(Complex{Float64}, max_length_multi, n) # pre-allocating IDEA: reversing indices might improve cache locality
+    pows = similar(norms)
+    for k in 0:fact.trunc_param
+        N_k_alpha = 1
+        if d > 2
+            N_k_alpha = inv((d+2k-2) * doublefact(d-4))
+            N_k_alpha = convert(Float64, N_k_alpha)
+            N_k_alpha *= iseven(d) ? (2π)^(d/2) : 2*(2π)^((d-1)/2)
+        end
+        if timeit
+            @timeit fact.to "multiindices" multiindices = get_multiindices(d, k)
+            hyp_harms_k = @view hyp_harms[1:length(multiindices), :]
+            @timeit fact.to "hypharmcalc" hyperharms!(hyp_harms_k, fact, k, rj_hyps, true, multiindices)
+            @timeit fact.to "pows" pows = norms .^ (k)
+        else
+            multiindices = get_multiindices(d, k)
+            hyp_harms_k = @view hyp_harms[1:length(multiindices), :]
+            hyperharms!(hyp_harms_k, fact, k, rj_hyps, true, multiindices)
+            @. pows = norms^k
+        end
+        # for i in k:2:(k+2*(fact.radial_fun_ranks[k+1]-1))
+        for i in k:2:fact.trunc_param
+            ind = [fact.multi_to_single[(k, multiindices[h_idx], i)] for h_idx in 1:length(multiindices)]
+            if timeit
+                @timeit fact.to "g_coefs" G_coefs = gfun(k, i)
+                @timeit fact.to "store" @. s2o_mat[ind, :] = N_k_alpha * conj(hyp_harms_k) * G_coefs' * pows'
+            else
+                G_coefs = gfun(k, i)
+                @. s2o_mat[ind, :] = N_k_alpha * conj(hyp_harms_k) * G_coefs' * pows'
+            end
+        end
+    end
+    return s2o_mat
 end
 
 # IDEA: change pt_hyps from vec of vec to matrix for cache locality
