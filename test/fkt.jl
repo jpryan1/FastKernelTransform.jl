@@ -30,15 +30,16 @@ function fkt_test(kernels, x, y, max_dofs_per_leaf, precond_param, trunc_param, 
         kern_mat  = k.(x, permutedims(x))
         bbar = fact * y
         b = kern_mat * y
+        println("Rel err: ", norm(b-bbar)/norm(b))
         @test isapprox(b, bbar, rtol = rtol, atol = atol)
     end
 end
 
 @testset "factorize and mul!" begin
     @testset "basic properties" begin
-        n, d = 128, 2
-        max_dofs_per_leaf = 4 # When to stop in tree decomposition
-        precond_param     = 8  # Size of diag blocks to inv for preconditioner
+        n, d = 1024, 2
+        max_dofs_per_leaf = 128 # When to stop in tree decomposition
+        precond_param     = 256  # Size of diag blocks to inv for preconditioner
         x = [scale .* rand(d) for i in 1:n]
         mat = FmmMatrix(Exp(), x, max_dofs_per_leaf, precond_param, trunc_param, to)
         fact = factorize(mat)
@@ -49,10 +50,10 @@ end
     end
 
     @testset "2d" begin
-        n, d = 128, 2
-        max_dofs_per_leaf = 4 # When to stop in tree decomposition
-        precond_param     = 8  # Size of diag blocks to inv for preconditioner
-        trunc_param = 10
+        n, d = 1024, 2
+        max_dofs_per_leaf = 128 # When to stop in tree decomposition
+        precond_param     = 256  # Size of diag blocks to inv for preconditioner
+        trunc_param = 5
         x = [scale .* rand(d) for i in 1:n]
         y = rand(n) # Start with random data values at each point
         kernels = [Exp(), Cauchy()]
@@ -61,10 +62,10 @@ end
     end
 
     @testset "3d" begin
-        n, d = 128, 3
-        max_dofs_per_leaf = 4  # When to stop in tree decomposition
-        precond_param     = 8  # Size of diag blocks to inv for preconditioner
-        trunc_param = 10
+        n, d = 8096, 3
+        max_dofs_per_leaf = 1024  # When to stop in tree decomposition
+        precond_param     = 1024  # Size of diag blocks to inv for preconditioner
+        trunc_param = 7
         x  = [scale .* rand(d) for i in 1:n]
         y = rand(n) # Start with random data values at each point
         kernels = (eq, Exp(), Cauchy()) # (es, eq, Exp(), Cauchy())

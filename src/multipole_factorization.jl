@@ -51,7 +51,7 @@ function MultipoleFactorization(kernel, points::AbstractVector{<:AbstractVector{
     dimension = length(points[1])
     multi_to_single = Dict() # TODO this doesn't need to be a dict anymore
     normalizer_table = Matrix{Float64}(undef, trunc_param+1, length(get_multiindices(dimension, trunc_param)))
-    tree = initialize_tree(points, max_dofs_per_leaf)
+    @timeit to "Initialize tree" tree = initialize_tree(points, max_dofs_per_leaf)
     get_F, get_G, radial_fun_ranks = init_F_G(kernel, dimension, trunc_param)
     fact = MultipoleFactorization(kernel, precond_param, trunc_param, to,
                                 multi_to_single, normalizer_table, tree, npoints,
