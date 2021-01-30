@@ -82,6 +82,7 @@ function compute_f_g_tables(kernel, transform_coef_table::AbstractArray, dimensi
                 break
             end
         end
+        println("Poly before correction")
         poly = expand(poly / (r^lowest_pow_r))
         # now lowest pow is 0
         mat = Matrix{Complex{Rational{BigInt}}}(undef, trunc_param+1, max(highest_pow_r-lowest_pow_r, trunc_param+1))

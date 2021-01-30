@@ -30,7 +30,7 @@ x = rand(N)
 # Convert from symbolic expression to Julia function
 using FastKernelTransform: FmmMatrix, factorize
 
-mat = FmmMatrix(kernel, points, max_dofs_per_leaf, precond_param, trunc_param, to)
+mat = FmmMatrix(kernel, points, points, max_dofs_per_leaf, precond_param, trunc_param, to)
 @timeit to "Form factorization" begin
     fact = factorize(mat)
 end

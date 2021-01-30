@@ -1,6 +1,7 @@
 mutable struct FmmMatrix{K, V<:AbstractVector{<:AbstractVector{<:Real}}} # IDEA: use CovarianceFunctions.Gramian
     kernel::K
-    points::V
+    tgt_points::V
+    src_points::V
     max_dofs_per_leaf::Int64
     precond_param::Int64
     trunc_param::Int64
@@ -9,15 +10,15 @@ end
 
 # fast kernel transform
 function fkt(mat::FmmMatrix)
-    return MultipoleFactorization(mat.kernel, mat.points, mat.max_dofs_per_leaf,
-                            mat.precond_param, mat.trunc_param, mat.to)
+    return MultipoleFactorization(mat.kernel, mat.tgt_points, mat.src_points,
+        mat.max_dofs_per_leaf, mat.precond_param, mat.trunc_param, mat.to)
 end
 
 # factorize only calls fkt if it is worth it
 function LinearAlgebra.factorize(mat::FmmMatrix)
-    if length(mat.points) < mat.max_dofs_per_leaf
-        x = math.points
-        return factorize(k.(x, permutedims(x)))
+    if max(length(mat.tgt_points),length(mat.src_points)) < mat.max_dofs_per_leaf
+        x = mat.src_points
+        return factorize(k.(mat.tgt_points, permutedims(mat.src_points)))
     else
         return fkt(mat)
     end
@@ -35,7 +36,8 @@ struct MultipoleFactorization{K, TO<:TimerOutput, MST, NT, TT<:Tree, FT, GT, RT<
     multi_to_single::MST
     normalizer_table::NT
     tree::TT
-    npoints::Int
+    n_tgt_points::Int
+    n_src_points::Int
 
     get_F::FT
     get_G::GT
@@ -45,16 +47,18 @@ end
 # TODO: max_dofs_per_leaf < precond_param
 # takes arbitrary isotropic kernel function k as input and creates symbolic expression
 # IDEA: convert points to vector of static arrays, dispatch 2d (and 1d) implementation on its type!
-function MultipoleFactorization(kernel, points::AbstractVector{<:AbstractVector{<:Real}},
+function MultipoleFactorization(kernel, tgt_points::AbstractVector{<:AbstractVector{<:Real}},
+     src_points::AbstractVector{<:AbstractVector{<:Real}},
                                 max_dofs_per_leaf::Int, precond_param::Int, trunc_param::Int, to::TimerOutput)
-    npoints = length(points)
-    dimension = length(points[1])
+    n_tgt_points = length(tgt_points)
+    n_src_points = length(src_points)
+    dimension = length(tgt_points[1])
     multi_to_single = Dict() # TODO this doesn't need to be a dict anymore
     normalizer_table = Matrix{Float64}(undef, trunc_param+1, length(get_multiindices(dimension, trunc_param)))
-    tree = initialize_tree(points, max_dofs_per_leaf)
+    tree = initialize_tree(tgt_points, src_points, max_dofs_per_leaf)  #TODO tgt vs src points
     get_F, get_G, radial_fun_ranks = init_F_G(kernel, dimension, trunc_param)
     fact = MultipoleFactorization(kernel, precond_param, trunc_param, to,
-                                multi_to_single, normalizer_table, tree, npoints,
+                                multi_to_single, normalizer_table, tree, n_tgt_points, n_src_points,
                                 get_F, get_G, radial_fun_ranks)
     fill_index_mapping_tables!(fact)
     if dimension > 2 @timeit fact.to "Populate normalizer table" fill_normalizer_table!(fact) end
@@ -63,8 +67,8 @@ function MultipoleFactorization(kernel, points::AbstractVector{<:AbstractVector{
     return fact
 end
 
-Base.size(F::MultipoleFactorization) = (F.npoints, F.npoints)
-Base.size(F::MultipoleFactorization, i::Int) = i > 2 ? 1 : F.npoints
+Base.size(F::MultipoleFactorization) = (F.n_tgt_points, F.n_src_points)
+Base.size(F::MultipoleFactorization, i::Int) = i > 2 ? 1 : (i==1 ? F.n_tgt_points : F.n_src_points)
 
 function fill_normalizer_table!(fact::MultipoleFactorization)
     # upper arg ranges from 1//2 up to (2k+d-2)//2, by halves
@@ -116,7 +120,7 @@ end
 function compute_transformation_mats!(fact::MultipoleFactorization)
     @timeit fact.to "parallel transformation_mats" begin
         @sync for leaf in allleaves(fact.tree.root)
-            if !isempty(leaf.data.points)
+            if !isempty(leaf.data.tgt_points)
                 @spawn transformation_mats_kernel!(fact, leaf, false) # have to switch off timers if parallel
                 # transformation_mats_kernel!(fact, leaf, true) # have to switch off timers if parallel
             end
@@ -129,8 +133,8 @@ function compute_preconditioner!(fact::MultipoleFactorization)
     node_queue = [fact.tree.root]
     while !isempty(node_queue) # IDEA: parallelize
         node = pop!(node_queue)
-        if length(node.data.point_indices) < fact.precond_param
-            tgt_points = node.data.points
+        if length(node.data.tgt_points) < fact.precond_param
+            tgt_points = node.data.tgt_points
             # IDEA: can the kernel matrix be extracted from node.data.near_mat?
             K = fact.kernel.(tgt_points, permutedims(tgt_points))
             node.data.diag_block = cholesky!(K) # in-place
@@ -145,12 +149,13 @@ function transformation_mats_kernel!(fact::MultipoleFactorization, leaf, timeit:
 
     num_multipoles = binomial(fact.trunc_param+fact.tree.dimension, fact.trunc_param)
 
-    tgt_points = leaf.data.points
-    src_points = copy(tgt_points)
-    src_points = vcat(src_points, [neighbor.data.points for neighbor in leaf.data.neighbors]...)
+    tgt_points = leaf.data.tgt_points
 
-    src_indices = copy(leaf.data.point_indices)
-    src_indices = vcat(src_indices, [neighbor.data.point_indices for neighbor in leaf.data.neighbors]...)
+    src_points = leaf.data.src_points
+    src_points = vcat(src_points, [neighbor.data.src_points for neighbor in leaf.data.neighbors]...)
+    src_indices = copy(leaf.data.src_point_indices)
+    src_indices = vcat(src_indices, [neighbor.data.src_point_indices for neighbor in leaf.data.neighbors]...)
+
     leaf.data.near_indices = src_indices
 
     if timeit
@@ -161,13 +166,13 @@ function transformation_mats_kernel!(fact::MultipoleFactorization, leaf, timeit:
     leaf.data.o2i = Vector{Matrix{Float64}}(undef, length(leaf.data.far_nodes))
     for far_node_idx in eachindex(leaf.data.far_nodes) # IDEA: parallelize?
         far_node = leaf.data.far_nodes[far_node_idx]
-        if isempty(far_node.data.points) continue end
-        src_points = far_node.data.points
+        if isempty(far_node.data.src_points) continue end
+        src_points = far_node.data.src_points
         center(x) = x - RegionTrees.center(far_node)
         recentered_tgt = center.(tgt_points)
         recentered_src = center.(src_points)
-        m = length(leaf.data.point_indices)
-        n = length(far_node.data.point_indices)
+        m = length(leaf.data.tgt_point_indices)
+        n = length(far_node.data.src_point_indices)
 
         if isempty(far_node.data.s2o)
             if timeit
@@ -177,16 +182,18 @@ function transformation_mats_kernel!(fact::MultipoleFactorization, leaf, timeit:
             end
         end
         if num_multipoles * (m + n) < m * n
+            println("Compressing!")
             if timeit
                 @timeit fact.to "outgoing2incoming" leaf.data.o2i[far_node_idx] = outgoing2incoming(fact, recentered_tgt)
             else
                 leaf.data.o2i[far_node_idx] = outgoing2incoming(fact, recentered_tgt, timeit)
             end
         else
+            println("Not compressing!")
             if timeit
-                @timeit fact.to "outgoing2incoming" leaf.data.o2i[far_node_idx] = fact.kernel.(leaf.data.points, permutedims(far_node.data.points))
+                @timeit fact.to "outgoing2incoming" leaf.data.o2i[far_node_idx] = fact.kernel.(leaf.data.tgt_points, permutedims(far_node.data.src_points))
             else
-                leaf.data.o2i[far_node_idx] = fact.kernel.(leaf.data.points, permutedims(far_node.data.points))
+                leaf.data.o2i[far_node_idx] = fact.kernel.(leaf.data.tgt_points, permutedims(far_node.data.src_points))
             end
         end
     end

@@ -35,7 +35,7 @@ function FastKernelTransform_benchmark(N = 8000, max_dofs_per_leaf = 512, precon
 
     suite = BenchmarkGroup()
 
-    mat = FmmMatrix(k, points, max_dofs_per_leaf, precond_param, trunc_param, to)
+    mat = FmmMatrix(k, points, points, max_dofs_per_leaf, precond_param, trunc_param, to)
     suite["factor"] = @benchmarkable factorize($mat)
     fact = factorize(mat)
     # suite["form dense matrix"] = @benchmarkable $kernel_fun.($points, permutedims($points))

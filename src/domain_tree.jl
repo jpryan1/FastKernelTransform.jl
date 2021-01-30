@@ -15,9 +15,11 @@ mutable struct NodeData{PT<:AbstractVector{<:AbstractVector{<:Real}},
   # TODO is_precond_node may be unnecessary
   dimension::Int
   level::Int
-  points::PT # how to keep this type general? (i.e. subarray) + 1d?
-  point_indices::PIT
+  tgt_points::PT # how to keep this type general? (i.e. subarray) + 1d?
+  tgt_point_indices::PIT
   near_indices::PIT
+  src_points::PT
+  src_point_indices::PIT
   neighbors::NT
   far_nodes::NT
   outgoing::OT  # This is an array of multipole coefficients, created at matvec time
@@ -29,7 +31,7 @@ mutable struct NodeData{PT<:AbstractVector{<:AbstractVector{<:Real}},
 end
 
 # constructor convenience
-function NodeData(isprecond, dimension, level, points, point_indices = collect(1:length(points)))
+function NodeData(isprecond, dimension, level, tgt_points, tgt_point_indices,src_points, src_point_indices)
   near_indices = zeros(Int, 0)
   neighbors = Vector{Cell}(undef, 0)
   far_nodes = Vector{Cell}(undef, 0)
@@ -38,8 +40,8 @@ function NodeData(isprecond, dimension, level, points, point_indices = collect(1
   diag_block = cholesky(zeros(0, 0)) # TODO this forces the DT type in NodeData to be a Cholesky, should it?
   s2o = zeros(Complex{Float64}, 0, 0)
   o2i = fill(s2o, 0)
-  NodeData(isprecond, dimension, level, points, point_indices,
-           near_indices, neighbors, far_nodes, outgoing,
+  NodeData(isprecond, dimension, level, tgt_points, tgt_point_indices,
+           near_indices, src_points, src_point_indices, neighbors, far_nodes, outgoing,
            near_mat, diag_block, s2o, o2i)
 end
 
@@ -115,27 +117,47 @@ struct DomainTreeRefinery <: AbstractRefinery
 end
 
 function needs_refinement(r::DomainTreeRefinery, cell::Cell)
-  return length(cell.data.points) > r.MAX_POINTS_IN_LEAF
+  return max(length(cell.data.tgt_points),length(cell.data.src_points) )> r.MAX_POINTS_IN_LEAF
 end
 
 function refine_data(r::DomainTreeRefinery, cell::Cell, indices)
-  points = cell.data.points
-  child_points = Vector{Vector{Float64}}(undef, 0)
-  child_point_indices = zeros(Int, 0)
+  tgt_points = cell.data.tgt_points
+  tgt_child_points = Vector{Vector{Float64}}(undef, 0)
+  tgt_child_point_indices = zeros(Int, 0)
   boundary = child_boundary(cell, indices)
   c = RegionTrees.center(boundary)[:]
   # Check inf norm dist of all points to child center
-  for i in eachindex(points)
-    pt = points[i]
+  for i in eachindex(tgt_points)
+    pt = tgt_points[i]
     rad = pt-c
     inf_norm = maximum(abs, rad)
     if inf_norm < maximum(boundary.widths) / 2
-      child_pt_idx = cell.data.point_indices[i]
-      push!(child_point_indices, child_pt_idx)
-      push!(child_points, points[i])
+      tgt_child_pt_idx = cell.data.tgt_point_indices[i]
+      push!(tgt_child_point_indices, tgt_child_pt_idx)
+      push!(tgt_child_points, tgt_points[i])
     end
   end
-  NodeData(false, cell.data.dimension, cell.data.level+1, child_points, child_point_indices)
+
+  src_points = cell.data.src_points
+  src_child_points = Vector{Vector{Float64}}(undef, 0)
+  src_child_point_indices = zeros(Int, 0)
+  boundary = child_boundary(cell, indices)
+  c = RegionTrees.center(boundary)[:]
+  # Check inf norm dist of all points to child center
+  for i in eachindex(src_points)
+    pt = src_points[i]
+    rad = pt-c
+    inf_norm = maximum(abs, rad)
+    if inf_norm < maximum(boundary.widths) / 2
+      src_child_pt_idx = cell.data.src_point_indices[i]
+      push!(src_child_point_indices, src_child_pt_idx)
+      push!(src_child_points, src_points[i])
+    end
+  end
+
+
+  NodeData(false, cell.data.dimension, cell.data.level+1, tgt_child_points,
+    tgt_child_point_indices, src_child_points, src_child_point_indices)
 end
 
 # Helper function for plotting 3D
@@ -145,13 +167,19 @@ function plot_box(plt, v)
 end
 
 
-function initialize_tree(points, max_dofs_per_leaf)
-  dimension = length(points[1])
+function initialize_tree(tgt_points, src_points, max_dofs_per_leaf)
+  dimension = length(tgt_points[1])
   # Get limits of root node for tree.
   delta = 1e-2
-  point_min = minimum(minimum, points) - delta
-  point_max = maximum(maximum, points) + delta
-  root_data = NodeData(false, dimension, 1, points)
+  src_point_min = minimum(minimum, src_points) - delta
+  src_point_max = maximum(maximum, src_points) + delta
+  tgt_point_min = minimum(minimum, tgt_points) - delta
+  tgt_point_max = maximum(maximum, tgt_points) + delta
+  point_min = min(src_point_min, tgt_point_min)
+  point_max = min(src_point_max, tgt_point_max)
+
+  root_data = NodeData(false, dimension, 1, tgt_points, collect(1:length(tgt_points)),
+    src_points, collect(1:length(src_points)))
 
   crnr = [point_min for i in 1:dimension]
   width = [point_max-point_min for i in 1:dimension]
