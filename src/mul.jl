@@ -10,7 +10,8 @@ end
 function mul!(y::AbstractVector, fact::MultipoleFactorization, x::AbstractVector)
     _checksizes(y, fact, x)
     num_multipoles = binomial(fact.trunc_param+fact.tree.dimension, fact.trunc_param)
-    counter = 0
+    total_compressed = 0
+    total_not_compressed = 0
     @sync for leaf in allleaves(fact.tree.root)
         if isempty(leaf.data.points) continue end
         @spawn begin
@@ -23,23 +24,24 @@ function mul!(y::AbstractVector, fact::MultipoleFactorization, x::AbstractVector
                 m = length(leaf.data.point_indices)
                 n = length(far_node.data.point_indices)
                 if num_multipoles * (m + n) < m * n # true if fast multiply is more efficient
-                    counter += 1
+                    total_compressed +=1
                     if isempty(far_node.data.outgoing) # IDEA: have this pre-allocated in compute_transformation_mats
                         far_node.data.outgoing = far_node.data.s2o * x[far_node.data.point_indices]
                     end
                     xi = far_node.data.outgoing
                 else
+                    total_not_compressed +=1
                     xi = x[far_node.data.point_indices]
                 end
                 mul!(yi, leaf.data.o2i[far_node_idx], xi, 1, 1) # yi should be real
             end
         end
     end
+    println("Compressed: ",total_compressed," not compressed: ", total_not_compressed)
     # clean up IDEA: have this pre-allocated in compute_transformation_mats
     for cell in allcells(fact.tree.root)
         cell.data.outgoing = []
     end
-    println("far field counter = $counter")
     return y
 end
 

@@ -46,12 +46,11 @@ end
 
 @testset "factorize and mul!" begin
     @testset "basic properties" begin
-        n, d = 256, 2
-        max_dofs_per_leaf = 4 # When to stop in tree decomposition
-        precond_param     = 8  # Size of diag blocks to inv for preconditioner
-        trunc_param = 5
-        x = data_generator(n, d)
-        mat = FmmMatrix(ek, x, max_dofs_per_leaf, precond_param, trunc_param, to)
+        n, d = 1024, 2
+        max_dofs_per_leaf = 128 # When to stop in tree decomposition
+        precond_param     = 256  # Size of diag blocks to inv for preconditioner
+        x = [scale .* rand(d) for i in 1:n]
+        mat = FmmMatrix(Exp(), x, max_dofs_per_leaf, precond_param, trunc_param, to)
         fact = factorize(mat)
         @test size(fact) == (n, n)
         @test size(fact, 1) == n
@@ -75,9 +74,9 @@ end
     println("3d")
     @testset "3d" begin
         n, d = 8096, 3
-        max_dofs_per_leaf = 512  # When to stop in tree decomposition
+        max_dofs_per_leaf = 1024  # When to stop in tree decomposition
         precond_param     = 1024  # Size of diag blocks to inv for preconditioner
-        trunc_param = 10
+        trunc_param = 7
         x = data_generator(n, d)
         y = rand(n) # Start with random data values at each point
         kernels = (eq, ek, Cauchy()) # (es, eq, ek, Cauchy())
