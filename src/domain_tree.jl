@@ -35,7 +35,7 @@ function NodeData(isprecond, dimension, level, points, point_indices = collect(1
   far_nodes = Vector{Cell}(undef, 0)
   outgoing = zeros(Complex{Float64}, 0)
   near_mat = zeros(0, 0)
-  diag_block = cholesky(zeros(0, 0)) # TODO this forces the DT type in NodeData to be a Cholesky, should it?
+  diag_block = cholesky(zeros(0, 0), Val(true), check = false) # TODO this forces the DT type in NodeData to be a Cholesky, should it?
   s2o = zeros(Complex{Float64}, 0, 0)
   o2i = fill(s2o, 0)
   NodeData(isprecond, dimension, level, points, point_indices,

@@ -1,14 +1,16 @@
 # matrix-vector multiplication and solves for MultipoleFactorization type
 import LinearAlgebra: *, mul!, \
-# TODO: complex vector necessary?
-*(fact::MultipoleFactorization, x::AbstractVector) = mul!(zeros(Complex{Float64}, size(x)), fact, x)
-# *(fact::MultipoleFactorization, x::AbstractVector) = mul!(zero(x), fact, x)
+function *(fact::MultipoleFactorization, x::AbstractVector)
+    b = zeros(Complex{Float64}, size(x)) # TODO: complex vector necessary?
+    mul!(b, fact, x)
+    real(b)
+end
 \(fact::MultipoleFactorization, b::AbstractVector) = conj_grad(fact, b)
 
 function mul!(y::AbstractVector, fact::MultipoleFactorization, x::AbstractVector)
     _checksizes(y, fact, x)
     num_multipoles = binomial(fact.trunc_param+fact.tree.dimension, fact.trunc_param)
-
+    counter = 0
     @sync for leaf in allleaves(fact.tree.root)
         if isempty(leaf.data.points) continue end
         @spawn begin
@@ -21,6 +23,7 @@ function mul!(y::AbstractVector, fact::MultipoleFactorization, x::AbstractVector
                 m = length(leaf.data.point_indices)
                 n = length(far_node.data.point_indices)
                 if num_multipoles * (m + n) < m * n # true if fast multiply is more efficient
+                    counter += 1
                     if isempty(far_node.data.outgoing) # IDEA: have this pre-allocated in compute_transformation_mats
                         far_node.data.outgoing = far_node.data.s2o * x[far_node.data.point_indices]
                     end
@@ -36,6 +39,7 @@ function mul!(y::AbstractVector, fact::MultipoleFactorization, x::AbstractVector
     for cell in allcells(fact.tree.root)
         cell.data.outgoing = []
     end
+    println("far field counter = $counter")
     return y
 end
 

@@ -20,6 +20,7 @@ export MultipoleFactorization
 export fkt # fast kernel transform
 
 include("util.jl")
+include("data_generators.jl")
 include("derivatives.jl")
 include("domain_tree.jl")
 include("multipole_factorization.jl")

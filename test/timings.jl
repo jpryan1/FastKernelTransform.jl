@@ -21,8 +21,13 @@ points  = [scale .* rand(dimension) for i in 1:N]
 
 # define kernel
 using CovarianceFunctions
-using CovarianceFunctions: Exp, EQ, MaternP, Matern, Cauchy
-kernel = Exp()
+using CovarianceFunctions: Exp, EQ, MaternP, Matern, Cauchy, difference
+# kernel = Exp()
+
+ek(r) = exp(-r) # with short lengthscale, not as accurate?
+ek(x, y) = ek(norm(difference(x, y)))
+FastKernelTransform.qrable(::typeof(ek)) = true
+kernel = ek
 
 # Start with random data values at each point
 x = rand(N)

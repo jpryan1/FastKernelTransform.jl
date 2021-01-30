@@ -5,7 +5,10 @@
 function init_F_G(kernel, dimension::Int, trunc_param::Int, doQR::Val{false} = Val(false))
     f = transformation_coefficients(dimension, trunc_param)
     get_F = init_F(kernel, trunc_param, f)
-    radial_fun_ranks = fill(trunc_param, trunc_param + 1) # generic expansion is full rank
+    radial_fun_ranks = zeros(Int, trunc_param + 1) # generic expansion is full rank
+    for k in 0:trunc_param
+        radial_fun_ranks[k+1] = floor(Int, (trunc_param - k) / 2 + 1)
+    end
     return get_F, get_G, radial_fun_ranks
 end
 

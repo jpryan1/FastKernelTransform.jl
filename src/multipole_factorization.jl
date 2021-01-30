@@ -16,7 +16,7 @@ end
 # factorize only calls fkt if it is worth it
 function LinearAlgebra.factorize(mat::FmmMatrix)
     if length(mat.points) < mat.max_dofs_per_leaf
-        x = math.points
+        x = mat.points
         return factorize(k.(x, permutedims(x)))
     else
         return fkt(mat)
@@ -42,6 +42,9 @@ struct MultipoleFactorization{K, TO<:TimerOutput, MST, NT, TT<:Tree, FT, GT, RT<
     radial_fun_ranks::RT
 end
 
+# this should be specialized for types of the form p(x) * exp(q(x)) where p, q are polynomials
+qrable(kernel) = false
+
 # TODO: max_dofs_per_leaf < precond_param
 # takes arbitrary isotropic kernel function k as input and creates symbolic expression
 # IDEA: convert points to vector of static arrays, dispatch 2d (and 1d) implementation on its type!
@@ -52,7 +55,7 @@ function MultipoleFactorization(kernel, points::AbstractVector{<:AbstractVector{
     multi_to_single = Dict() # TODO this doesn't need to be a dict anymore
     normalizer_table = Matrix{Float64}(undef, trunc_param+1, length(get_multiindices(dimension, trunc_param)))
     tree = initialize_tree(points, max_dofs_per_leaf)
-    get_F, get_G, radial_fun_ranks = init_F_G(kernel, dimension, trunc_param)
+    get_F, get_G, radial_fun_ranks = init_F_G(kernel, dimension, trunc_param, Val(qrable(kernel)))
     fact = MultipoleFactorization(kernel, precond_param, trunc_param, to,
                                 multi_to_single, normalizer_table, tree, npoints,
                                 get_F, get_G, radial_fun_ranks)
@@ -103,7 +106,9 @@ function fill_index_mapping_tables!(fact::MultipoleFactorization)
     counter = 0
     for k in 0:fact.trunc_param
         multiindices = get_multiindices(fact.tree.dimension, k)
-        # for i in k:2:(k+2*(fact.radial_fun_ranks[k+1]-1))
+        r = fact.radial_fun_ranks[k+1]
+        max_i = k+2*(r-1)
+        # for i in k:2:max_i
         for i in k:2:fact.trunc_param
             for h in multiindices
                 counter += 1
@@ -117,8 +122,8 @@ function compute_transformation_mats!(fact::MultipoleFactorization)
     @timeit fact.to "parallel transformation_mats" begin
         @sync for leaf in allleaves(fact.tree.root)
             if !isempty(leaf.data.points)
-                @spawn transformation_mats_kernel!(fact, leaf, false) # have to switch off timers if parallel
-                # transformation_mats_kernel!(fact, leaf, true) # have to switch off timers if parallel
+                # @spawn transformation_mats_kernel!(fact, leaf, false) # have to switch off timers if parallel
+                transformation_mats_kernel!(fact, leaf, true) # have to switch off timers if parallel
             end
         end
     end
@@ -133,7 +138,7 @@ function compute_preconditioner!(fact::MultipoleFactorization)
             tgt_points = node.data.points
             # IDEA: can the kernel matrix be extracted from node.data.near_mat?
             K = fact.kernel.(tgt_points, permutedims(tgt_points))
-            node.data.diag_block = cholesky!(K) # in-place
+            node.data.diag_block = cholesky!(K, Val(true), tol = 1e-6, check = false) # in-place
         else
             append!(node_queue, children(node))
         end
@@ -213,14 +218,16 @@ function outgoing2incoming(fact::MultipoleFactorization, recentered_tgt::Abstrac
             @timeit fact.to "multiindices" multiindices = get_multiindices(d, k)
             hyp_harms_k = @view hyp_harms[1:length(multiindices), :]
             @timeit fact.to "hypharmcalc" hyperharms!(hyp_harms_k, fact, k, ra_hyps, false, multiindices)
-            @timeit fact.to "denoms" denoms = norms .^ (k+1)
+            @timeit fact.to "denoms" @. denoms = norms^(k+1)
         else
             multiindices = get_multiindices(d, k)
             hyp_harms_k = @view hyp_harms[1:length(multiindices), :]
             hyperharms!(hyp_harms_k, fact, k, ra_hyps, false, multiindices)
             @. denoms = norms^(k+1)
         end
-        # for i in k:2:(k+2*(fact.radial_fun_ranks[k+1]-1))
+        r = fact.radial_fun_ranks[k+1]
+        max_i = k+2*(r-1)
+        # for i in k:2:max_i
         for i in k:2:fact.trunc_param
             ind = [fact.multi_to_single[(k, multiindices[h_idx], i)] for h_idx in 1:length(multiindices)]
             if timeit
@@ -259,14 +266,16 @@ function source2outgoing(fact::MultipoleFactorization, recentered_src::AbstractV
             @timeit fact.to "multiindices" multiindices = get_multiindices(d, k)
             hyp_harms_k = @view hyp_harms[1:length(multiindices), :]
             @timeit fact.to "hypharmcalc" hyperharms!(hyp_harms_k, fact, k, rj_hyps, true, multiindices)
-            @timeit fact.to "pows" pows = norms .^ (k)
+            @timeit fact.to "pows" @. pows = norms^k
         else
             multiindices = get_multiindices(d, k)
             hyp_harms_k = @view hyp_harms[1:length(multiindices), :]
             hyperharms!(hyp_harms_k, fact, k, rj_hyps, true, multiindices)
             @. pows = norms^k
         end
-        # for i in k:2:(k+2*(fact.radial_fun_ranks[k+1]-1))
+        r = fact.radial_fun_ranks[k+1]
+        max_i = k+2*(r-1) # TODO: make certain this is trunc_param in dense case
+        # for i in k:2:max_i
         for i in k:2:fact.trunc_param
             ind = [fact.multi_to_single[(k, multiindices[h_idx], i)] for h_idx in 1:length(multiindices)]
             if timeit
