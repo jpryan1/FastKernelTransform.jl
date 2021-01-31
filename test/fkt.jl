@@ -9,13 +9,14 @@ using Test
 to = TimerOutput()
 
 using FastKernelTransform: FmmMatrix, factorize
-using FastKernelTransform: uniform_data, gaussian_mixture_data, embedded_data
+using FastKernelTransform: uniform_data, gaussian_mixture_data, two_bump_data
 using CovarianceFunctions
 using CovarianceFunctions: EQ, Exp, Cauchy, Lengthscale, difference
 
 σ = .1
-c = 2 # TODO: make sure this works if c does not divide n!
-data_generator(n, d) = gaussian_mixture_data(n, c, d, σ)
+# c = 2
+# data_generator(n, d) = gaussian_mixture_data(n, c, d, σ)
+data_generator(n, d) = two_bump_data(n, d, σ)
 
 # define kernels
 es(r) = r == 0 ? typeof(r)(1e3) : inv(r)
@@ -26,17 +27,19 @@ ek(x, y) = ek(norm(difference(x, y)))
 
 # FastKernelTransform.qrable(::typeof(ek)) = true
 
-atol = 1e-3
-rtol = 1e-3
+atol = 1e-4
+rtol = 1e-4
 # test driver
 function fkt_test(kernels, x, y, max_dofs_per_leaf, precond_param, trunc_param, to)
     for (i, k) in enumerate(kernels)
         mat = FmmMatrix(k, x, max_dofs_per_leaf, precond_param, trunc_param, to)
         fact = factorize(mat)
         kern_mat  = k.(x, permutedims(x))
+
         bbar = fact * y
         b = kern_mat * y
         println("relative error = $(norm(b-bbar)/norm(b))")
+        # println("condition = $(cond(kern_mat))")
         if norm(b-bbar)/norm(b) < 1e-10
             println("Warning: far-field probably not called")
         end
@@ -47,9 +50,10 @@ end
 @testset "factorize and mul!" begin
     @testset "basic properties" begin
         n, d = 1024, 2
-        max_dofs_per_leaf = 128 # When to stop in tree decomposition
-        precond_param     = 256  # Size of diag blocks to inv for preconditioner
-        x = [scale .* rand(d) for i in 1:n]
+        max_dofs_per_leaf = 64 # When to stop in tree decomposition
+        precond_param     = 128  # Size of diag blocks to inv for preconditioner
+        trunc_param = 5
+        x = data_generator(n, d)
         mat = FmmMatrix(Exp(), x, max_dofs_per_leaf, precond_param, trunc_param, to)
         fact = factorize(mat)
         @test size(fact) == (n, n)
@@ -60,10 +64,10 @@ end
 
     println("2d")
     @testset "2d" begin
-        n, d = 8096, 2
-        max_dofs_per_leaf = 512 # When to stop in tree decomposition
-        precond_param     = 1024  # Size of diag blocks to inv for preconditioner
-        trunc_param = 10
+        n, d = 2048, 2
+        max_dofs_per_leaf = 256 # When to stop in tree decomposition
+        precond_param     = 512  # Size of diag blocks to inv for preconditioner
+        trunc_param = 5
         x = data_generator(n, d)
         y = rand(n) # Start with random data values at each point
         kernels = [ek, Cauchy()]
@@ -73,10 +77,10 @@ end
 
     println("3d")
     @testset "3d" begin
-        n, d = 8096, 3
-        max_dofs_per_leaf = 1024  # When to stop in tree decomposition
-        precond_param     = 1024  # Size of diag blocks to inv for preconditioner
-        trunc_param = 7
+        n, d = 2048, 3
+        max_dofs_per_leaf = 256  # When to stop in tree decomposition
+        precond_param     = 512  # Size of diag blocks to inv for preconditioner
+        trunc_param = 6
         x = data_generator(n, d)
         y = rand(n) # Start with random data values at each point
         kernels = (eq, ek, Cauchy()) # (es, eq, ek, Cauchy())
