@@ -46,9 +46,11 @@ end
 
 @testset "factorize and mul!" begin
     @testset "basic properties" begin
-        n, d = 1024, 2
+        n, d = 4096, 2
         max_dofs_per_leaf = 128 # When to stop in tree decomposition
         precond_param     = 256  # Size of diag blocks to inv for preconditioner
+        scale = 5
+        trunc_param=10
         x = [scale .* rand(d) for i in 1:n]
         mat = FmmMatrix(Exp(), x, max_dofs_per_leaf, precond_param, trunc_param, to)
         fact = factorize(mat)
@@ -71,9 +73,9 @@ end
         fkt_test(kernels, x, y, max_dofs_per_leaf, precond_param, trunc_param, to)
     end
 
-    println("3d")
+    println("5d")
     @testset "3d" begin
-        n, d = 8096, 3
+        n, d = 8096, 5
         max_dofs_per_leaf = 1024  # When to stop in tree decomposition
         precond_param     = 1024  # Size of diag blocks to inv for preconditioner
         trunc_param = 7

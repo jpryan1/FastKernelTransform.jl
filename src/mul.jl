@@ -12,35 +12,35 @@ function mul!(y::AbstractVector, fact::MultipoleFactorization, x::AbstractVector
     num_multipoles = binomial(fact.trunc_param+fact.tree.dimension, fact.trunc_param)
     total_compressed = 0
     total_not_compressed = 0
-    @sync for leaf in allleaves(fact.tree.root)
-        if isempty(leaf.data.points) continue end
+    @sync for leaf in fact.tree.allleaves
+        if isempty(leaf.points) continue end
         @spawn begin
-            xi = x[leaf.data.near_indices]
-            yi = @view y[leaf.data.point_indices]
-            mul!(yi, leaf.data.near_mat, xi, 1, 0) # near field interaction
-            for far_node_idx in eachindex(leaf.data.far_nodes)
-                far_node = leaf.data.far_nodes[far_node_idx]
-                if isempty(far_node.data.points) continue end
-                m = length(leaf.data.point_indices)
-                n = length(far_node.data.point_indices)
+            xi = x[leaf.near_indices]
+            yi = @view y[leaf.point_indices]
+            mul!(yi, leaf.near_mat, xi, 1, 0) # near field interaction
+            for far_node_idx in eachindex(leaf.far_nodes)
+                far_node = leaf.far_nodes[far_node_idx]
+                if isempty(far_node.points) continue end
+                m = length(leaf.point_indices)
+                n = length(far_node.point_indices)
                 if num_multipoles * (m + n) < m * n # true if fast multiply is more efficient
                     total_compressed +=1
-                    if isempty(far_node.data.outgoing) # IDEA: have this pre-allocated in compute_transformation_mats
-                        far_node.data.outgoing = far_node.data.s2o * x[far_node.data.point_indices]
+                    if isempty(far_node.outgoing) # IDEA: have this pre-allocated in compute_transformation_mats
+                        far_node.outgoing = far_node.s2o * x[far_node.point_indices]
                     end
-                    xi = far_node.data.outgoing
+                    xi = far_node.outgoing
                 else
                     total_not_compressed +=1
-                    xi = x[far_node.data.point_indices]
+                    xi = x[far_node.point_indices]
                 end
-                mul!(yi, leaf.data.o2i[far_node_idx], xi, 1, 1) # yi should be real
+                mul!(yi, leaf.o2i[far_node_idx], xi, 1, 1) # yi should be real
             end
         end
     end
     println("Compressed: ",total_compressed," not compressed: ", total_not_compressed)
     # clean up IDEA: have this pre-allocated in compute_transformation_mats
-    for cell in allcells(fact.tree.root)
-        cell.data.outgoing = []
+    for cell in fact.tree.allnodes
+        cell.outgoing = []
     end
     return y
 end
@@ -82,11 +82,12 @@ end
 
 function approx_inv(fact::MultipoleFactorization, b)
     total = zero(b)
-    for cell in allcells(fact.tree.root)
-        if !isa(cell.data.diag_block, Factorization)
+    for cell in fact.tree.allnodes
+
+        if !isa(cell.diag_block, Factorization)
             continue
         end
-        total[cell.data.point_indices] =  cell.data.diag_block \ b[cell.data.point_indices]
+        total[cell.point_indices] =  cell.diag_block \ b[cell.point_indices]
     end
     return total
 end
