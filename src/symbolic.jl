@@ -15,8 +15,8 @@ function get_derivs(kernel::Basic, trunc_param::Int64)
     return derivs
 end
 
+# IDEA can we encapsulate radial_fun_ranks in get_F, get_G?
 function init_F_G(kernel, dimension::Int, trunc_param::Int, doQR::Val{true})
-    println("QR init ", kernel)
     f = transformation_coefficients(dimension, trunc_param, Rational{BigInt})
     F_coeff, G_coeff, radial_fun_ranks, correction, lowest_pow_r = compute_f_g_tables(kernel, f, dimension, trunc_param)
     function get_F(r::AbstractVector)
@@ -24,9 +24,10 @@ function init_F_G(kernel, dimension::Int, trunc_param::Int, doQR::Val{true})
         corr = correction.(r)
         function F(k::Int, i::Int) # returns F_ki applied to r
             @. val = 0
-            FDict = F_coeff[k+1, i+1]
-            for pow in keys(FDict)
-                @. val += r ^ (pow +lowest_pow_r[k+1]) * FDict[pow]
+            Fki = @view F_coeff[:, k+1, i+1]
+            for j in eachindex(Fki)
+                pow = j-1
+                @. val += r ^ (pow + lowest_pow_r[k+1]) * Fki[j]
             end
             return val .*= corr
         end
@@ -35,37 +36,22 @@ function init_F_G(kernel, dimension::Int, trunc_param::Int, doQR::Val{true})
         val = similar(rprime)
         function G(k::Int, i::Int) # returns G_ki applied to r
             @. val = 0
-            GDict = G_coeff[k+1, i+1]
-            for pow in keys(GDict)
-                @. val += (rprime ^ (pow)) * GDict[pow]
+            Gki = @view G_coeff[:, k+1, i+1]
+            for j in eachindex(Gki)
+                pow = j-1
+                @. val += (rprime ^ pow) * Gki[j]
             end
             return val
         end
     end
-    return get_F, get_G, radial_fun_ranks # IDEA can we encapsulate radial_fun_ranks in get_F, get_G?
+    return get_F, get_G, radial_fun_ranks
 end
 
 function compute_f_g_tables(kernel, transform_coef_table::AbstractArray, dimension::Int, trunc_param::Int)
     @vars r, rprime
     p = trunc_param
-    # F_coeff = zeros(p+1, p+1, p+1) # TODO: make powers of r dimension the first for cache locality
-    # G_coeff = zeros(p+1, p+1, p+1)
-    # F_coeff = fill(Dict(), p+1, p+1)
-    F_coeff = Array{Any, 2}(undef, p+1, p+1)
-    G_coeff = Array{Any, 2}(undef, p+1, p+1)
-    for i in 1:(p+1)
-        for j in 1:(p+1)
-            F_coeff[i,j] = Dict()
-        end
-    end
-
-    # F_coeff[2,1][0]=0
-    # G_coeff = fill(Dict(), p+1, p+1)
-    for i in 1:(p+1)
-        for j in 1:(p+1)
-            G_coeff[i,j] = Dict()
-        end
-    end
+    F_coeff = zeros(p+1, p+1, p+1) # TODO: make powers of r dimension the first for cache locality
+    G_coeff = zeros(p+1, p+1, p+1)
     radial_fun_ranks = zeros(Int, p+1)
     lowest_pow_r = zeros(Int, p+1)
 
@@ -138,12 +124,8 @@ function compute_f_g_tables(kernel, transform_coef_table::AbstractArray, dimensi
             end
             r_poly = 0
             rprime_poly = 0
-            for j in 1:size(Qmat, 1)
-                r_pow = j-1 # + lowest_pow_r[k+1]
-                rprime_pow = j-1
-                F_coeff[k+1, (k+1)+ 2(i-1)][r_pow] = convert(Float64, Qmat[j, i])
-                G_coeff[k+1, (k+1)+ 2(i-1)][rprime_pow] = convert(Float64, Rmat[i, j])
-            end
+            @. F_coeff[:, k+1, (k+1)+ 2(i-1)] = Qmat[:, i]
+            @. G_coeff[:, k+1, (k+1)+ 2(i-1)] = Rmat[i, :]
         end
         new_poly = 0
         old_poly = 0

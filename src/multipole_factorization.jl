@@ -75,21 +75,9 @@ function fill_index_mapping_tables!(fact::MultipoleFactorization)
         r = fact.radial_fun_ranks[k+1]
         max_i = k+2*(r-1)
         for i in k:2:max_i
-        # for i in k:2:fact.trunc_param
             for h in multiindices
                 counter += 1
                 fact.multi_to_single[(k, h, i)] = counter
-            end
-        end
-    end
-end
-
-function compute_transformation_mats!(fact::MultipoleFactorization)
-    @timeit fact.to "parallel transformation_mats" begin
-        @sync for leaf in fact.tree.allleaves
-            if !isempty(leaf.points)
-                @spawn transformation_mats_kernel!(fact, leaf, false) # have to switch off timers if parallel
-                # transformation_mats_kernel!(fact, leaf, true) # have to switch off timers if parallel
             end
         end
     end
@@ -108,6 +96,17 @@ function compute_preconditioner!(fact::MultipoleFactorization)
         else
             push!(node_queue, node.left_child)
             push!(node_queue, node.right_child)
+        end
+    end
+end
+
+function compute_transformation_mats!(fact::MultipoleFactorization)
+    @timeit fact.to "parallel transformation_mats" begin
+        @sync for leaf in fact.tree.allleaves
+            if !isempty(leaf.points)
+                # @spawn transformation_mats_kernel!(fact, leaf, false) # have to switch off timers if parallel
+                transformation_mats_kernel!(fact, leaf, true) # have to switch off timers if parallel
+            end
         end
     end
 end
@@ -155,7 +154,7 @@ function transformation_mats_kernel!(fact::MultipoleFactorization, leaf, timeit:
             end
         else
             if timeit
-                @timeit fact.to "outgoing2incoming" leaf.o2i[far_node_idx] = fact.kernel.(leaf.points, permutedims(far_node.points))
+                @timeit fact.to "dense outgoing2incoming" leaf.o2i[far_node_idx] = fact.kernel.(leaf.points, permutedims(far_node.points))
             else
                 leaf.o2i[far_node_idx] = fact.kernel.(leaf.points, permutedims(far_node.points))
             end
@@ -204,7 +203,6 @@ function outgoing2incoming(fact::MultipoleFactorization, recentered_tgt::Abstrac
         r = fact.radial_fun_ranks[k+1]
         max_i = k+2*(r-1)
         for i in k:2:max_i
-        # for i in k:2:fact.trunc_param
             ind = [fact.multi_to_single[(k, multiindices[h_idx], i)] for h_idx in 1:length(multiindices)]
             if timeit
                 @timeit fact.to "f_coefs" F_coefs = ffun(k, i)
@@ -261,9 +259,8 @@ function source2outgoing(fact::MultipoleFactorization, recentered_src::AbstractV
             @. pows = norms^k
         end
         r = fact.radial_fun_ranks[k+1]
-        max_i = k+2*(r-1) # TODO: make extra certain this is trunc_param in dense case
+        max_i = k+2*(r-1)
         for i in k:2:max_i
-        # for i in k:2:fact.trunc_param
             ind = [fact.multi_to_single[(k, multiindices[h_idx], i)] for h_idx in 1:length(multiindices)]
             if timeit
                 @timeit fact.to "g_coefs" G_coefs = gfun(k, i)

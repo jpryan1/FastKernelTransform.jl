@@ -10,9 +10,9 @@ mutable struct BallNode{PT<:AbstractVector{<:AbstractVector{<:Real}},
                       MT<:AbstractMatrix{<:Real},
                       DT,
                       ST<:AbstractMatrix{<:Number},
-                      OIT<:AbstractVector{<:AbstractMatrix{<:Number}}}
-  is_precond_node::Bool  # is Node whose diag block is inv'd for precond
-  # TODO is_precond_node may be unnecessary
+                      OIT<:AbstractVector{<:AbstractMatrix{<:Number}},
+                      CT}
+  is_precond_node::Bool  # is Node whose diag block is inv'd for precond TODO may be unnecessary
   dimension::Int
   points::PT # how to keep this type general? (i.e. subarray) + 1d?
   point_indices::PIT
@@ -25,10 +25,10 @@ mutable struct BallNode{PT<:AbstractVector{<:AbstractVector{<:Real}},
   # Below are source2outgoing and outgoing2incoming mats, created at factor time
   s2o::ST
   o2i::OIT
-  left_child
-  right_child
-  parent
-  center
+  left_child # can be BallNode or Nothing
+  right_child # can be BallNode or Nothing
+  parent # can be BallNode or Nothing
+  center::CT
   splitter_normal # nothing if leaf
 end
 
@@ -48,26 +48,24 @@ function BallNode(isprecond, dimension, ctr, points, point_indices = collect(1:l
            near_mat, diag_block, s2o, o2i, nothing, nothing, nothing, ctr, nothing)
 end
 
-
-mutable struct Tree
-  dimension::Int64
-  root::BallNode
-  max_dofs_per_leaf::Int64
-  allnodes::Array{BallNode}
-  allleaves::Array{BallNode}
+struct Tree{T<:Real, R<:BallNode, V<:AbstractVector{<:BallNode}}
+    dimension::Int64
+    root::R
+    max_dofs_per_leaf::Int64
+    allnodes::V
+    allleaves::V
+    neighbor_scale::T
 end
 
-
-function isleaf(node)
-  return node.splitter_normal == nothing
+function isleaf(node::BallNode)
+    return node.splitter_normal == nothing
 end
-
 
 function plane_intersects_sphere(plane_center, splitter_normal,
         sphere_center, sphere_leafrad)
   sphere_right_pole = sphere_center + sphere_leafrad * splitter_normal
   sphere_left_pole = sphere_center - sphere_leafrad * splitter_normal
-  return ( dot(sphere_right_pole - plane_center, splitter_normal)
+  return (dot(sphere_right_pole - plane_center, splitter_normal)
           * dot(sphere_left_pole - plane_center, splitter_normal) < 0)
 end
 
@@ -85,12 +83,12 @@ function compute_near_far_nodes!(bt)
         end
       else
         intersected = plane_intersects_sphere(cur_node.center,
-                        cur_node.splitter_normal, leaf.center, 1.1*leafrad)
+                        cur_node.splitter_normal, leaf.center, bt.neighbor_scale*leafrad)
         if intersected
           push!(node_queue, cur_node.left_child)
           push!(node_queue, cur_node.right_child)
         else
-          if(dot(leaf.center-cur_node.center, cur_node.splitter_normal) > 0)
+          if dot(leaf.center-cur_node.center, cur_node.splitter_normal) > 0
             push!(node_queue, cur_node.right_child)
             push!(leaf.far_nodes, cur_node.left_child)
           else
@@ -103,19 +101,19 @@ function compute_near_far_nodes!(bt)
   end
 end
 
-
+using CovarianceFunctions: difference
 function find_farthest(far_pt, pts)
-  max_dist = 0
-  cur_farthest = far_pt
-  for p in pts
-    if norm(p-far_pt)>max_dist
-      max_dist=norm(p-far_pt)
-      cur_farthest = p
+    max_dist = 0
+    cur_farthest = far_pt
+    for p in pts
+        dist = norm(difference(p, far_pt))
+        if dist > max_dist
+            max_dist = dist
+            cur_farthest = p
+        end
     end
-  end
-  return cur_farthest
+    return cur_farthest
 end
-
 
 function rec_split!(bt, node)
   pt_L = find_farthest(node.center, node.points)
@@ -145,31 +143,35 @@ function rec_split!(bt, node)
   left_center = sum(left_points)/length(left_points)
   right_center = sum(right_points)/length(right_points)
 
-
   left_node = BallNode(false, node.dimension, left_center, left_points, left_indices)
   right_node = BallNode(false, node.dimension, right_center, right_points, right_indices)
   left_node.parent = node
-  right_node.parent = node
+  right_node.parent = node # IDEA: recurse before constructing node?
   push!(bt.allnodes, left_node)
   push!(bt.allnodes, right_node)
   node.left_child = left_node
   node.right_child = right_node
-  if(length(left_points) > bt.max_dofs_per_leaf)
+  if length(left_points) > bt.max_dofs_per_leaf
     rec_split!(bt, left_node)
   end
-  if(length(right_points)>bt.max_dofs_per_leaf)
+  if length(right_points) > bt.max_dofs_per_leaf
     rec_split!(bt, right_node)
   end
 end
 
+function heuristic_neighbor_scale(dimension::Int)
+    3 / sqrt(dimension)
+end
 
-function initialize_tree(points, max_dofs_per_leaf)
+function initialize_tree(points, max_dofs_per_leaf, neighbor_scale::Real = heuristic_neighbor_scale(length(points[1])))
   dimension = length(points[1])
   center = sum(points)/length(points)
 
   root = BallNode(false, dimension, center, points)
-  bt = Tree(dimension, root, max_dofs_per_leaf, [root], [])
-  if(length(points) > max_dofs_per_leaf)
+  allnodes = [root]
+  allleaves = fill(root, 0)
+  bt = Tree(dimension, root, max_dofs_per_leaf, allnodes, allleaves, neighbor_scale)
+  if length(points) > max_dofs_per_leaf
     rec_split!(bt, root)
   end
 

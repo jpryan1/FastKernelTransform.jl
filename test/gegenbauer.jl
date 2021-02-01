@@ -1,4 +1,4 @@
-module TestHyperspherical
+module TestGegenbauer
 using Test
 using FastKernelTransform: gegenbauer, chebyshev
 using SpecialPolynomials: Gegenbauer
