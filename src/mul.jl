@@ -31,7 +31,7 @@ function mul!(y::AbstractVector, fact::MultipoleFactorization, x::AbstractVector
                     xi = far_node.outgoing
                 else
                     total_not_compressed += 1
-                    xi = x[far_node.data.point_indices]
+                    xi = x[far_node.point_indices]
                 end
                 mul!(yi, leaf.o2i[far_node_idx], xi, 1, 1) # yi should be real
             end
