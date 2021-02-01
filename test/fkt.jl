@@ -64,7 +64,7 @@ end
 
     println("2d")
     @testset "2d" begin
-        n, d = 2048, 2
+        n, d = 4096, 2
         max_dofs_per_leaf = 256 # When to stop in tree decomposition
         precond_param     = 512  # Size of diag blocks to inv for preconditioner
         trunc_param = 5
@@ -75,9 +75,9 @@ end
         fkt_test(kernels, x, y, max_dofs_per_leaf, precond_param, trunc_param, to)
     end
 
-    println("3d")
+    println("5d")
     @testset "3d" begin
-        n, d = 2048, 3
+        n, d = 4096, 3
         max_dofs_per_leaf = 256  # When to stop in tree decomposition
         precond_param     = 512  # Size of diag blocks to inv for preconditioner
         trunc_param = 6

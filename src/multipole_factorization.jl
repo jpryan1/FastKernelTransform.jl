@@ -86,8 +86,8 @@ end
 
 function compute_transformation_mats!(fact::MultipoleFactorization)
     @timeit fact.to "parallel transformation_mats" begin
-        @sync for leaf in allleaves(fact.tree.root)
-            if !isempty(leaf.data.points)
+        @sync for leaf in fact.tree.allleaves
+            if !isempty(leaf.points)
                 @spawn transformation_mats_kernel!(fact, leaf, false) # have to switch off timers if parallel
                 # transformation_mats_kernel!(fact, leaf, true) # have to switch off timers if parallel
             end
@@ -100,64 +100,64 @@ function compute_preconditioner!(fact::MultipoleFactorization)
     node_queue = [fact.tree.root]
     while !isempty(node_queue) # IDEA: parallelize
         node = pop!(node_queue)
-        if length(node.data.point_indices) < fact.precond_param
-            tgt_points = node.data.points
-            # IDEA: can the kernel matrix be extracted from node.data.near_mat?
+        if length(node.point_indices) < fact.precond_param
+            tgt_points = node.points
+            # IDEA: can the kernel matrix be extracted from node.near_mat?
             K = fact.kernel.(tgt_points, permutedims(tgt_points))
-            node.data.diag_block = cholesky!(K, Val(true), tol = 1e-6, check = false) # in-place
+            node.diag_block = cholesky!(K, Val(true), tol = 1e-6, check = false) # in-place
         else
-            append!(node_queue, children(node))
+            push!(node_queue, node.left_child)
+            push!(node_queue, node.right_child)
         end
     end
 end
 
 # computational kernel of transformation mats that is run in parallel
 function transformation_mats_kernel!(fact::MultipoleFactorization, leaf, timeit::Bool = true)
-
     num_multipoles = binomial(fact.trunc_param+fact.tree.dimension, fact.trunc_param)
 
-    tgt_points = leaf.data.points
+    tgt_points = leaf.points
     src_points = copy(tgt_points)
-    src_points = vcat(src_points, [neighbor.data.points for neighbor in leaf.data.neighbors]...)
+    src_points = vcat(src_points, [neighbor.points for neighbor in leaf.neighbors]...)
 
-    src_indices = copy(leaf.data.point_indices)
-    src_indices = vcat(src_indices, [neighbor.data.point_indices for neighbor in leaf.data.neighbors]...)
-    leaf.data.near_indices = src_indices
+    src_indices = copy(leaf.point_indices)
+    src_indices = vcat(src_indices, [neighbor.point_indices for neighbor in leaf.neighbors]...)
+    leaf.near_indices = src_indices
 
     if timeit
-        @timeit fact.to "get near mat" leaf.data.near_mat = fact.kernel.(tgt_points, permutedims(src_points))
+        @timeit fact.to "get near mat" leaf.near_mat = fact.kernel.(tgt_points, permutedims(src_points))
     else
-        leaf.data.near_mat = fact.kernel.(tgt_points, permutedims(src_points))
+        leaf.near_mat = fact.kernel.(tgt_points, permutedims(src_points))
     end
-    leaf.data.o2i = Vector{Matrix{Float64}}(undef, length(leaf.data.far_nodes))
-    for far_node_idx in eachindex(leaf.data.far_nodes) # IDEA: parallelize?
-        far_node = leaf.data.far_nodes[far_node_idx]
-        if isempty(far_node.data.points) continue end
-        src_points = far_node.data.points
-        center(x) = x - RegionTrees.center(far_node)
+    leaf.o2i = Vector{Matrix{Float64}}(undef, length(leaf.far_nodes))
+    for far_node_idx in eachindex(leaf.far_nodes) # IDEA: parallelize?
+        far_node = leaf.far_nodes[far_node_idx]
+        if isempty(far_node.points) continue end
+        src_points = far_node.points
+        center(x) = x - far_node.center
         recentered_tgt = center.(tgt_points)
         recentered_src = center.(src_points)
-        m = length(leaf.data.point_indices)
-        n = length(far_node.data.point_indices)
+        m = length(leaf.point_indices)
+        n = length(far_node.point_indices)
+        if isempty(far_node.s2o)
 
-        if isempty(far_node.data.s2o)
             if timeit
-                @timeit fact.to "source2outgoing" far_node.data.s2o = source2outgoing(fact, recentered_src)
+                @timeit fact.to "source2outgoing" far_node.s2o = source2outgoing(fact, recentered_src)
             else
-                far_node.data.s2o = source2outgoing(fact, recentered_src, timeit)
+                far_node.s2o = source2outgoing(fact, recentered_src, timeit)
             end
         end
         if num_multipoles * (m + n) < m * n
             if timeit
-                @timeit fact.to "outgoing2incoming" leaf.data.o2i[far_node_idx] = outgoing2incoming(fact, recentered_tgt)
+                @timeit fact.to "outgoing2incoming" leaf.o2i[far_node_idx] = outgoing2incoming(fact, recentered_tgt)
             else
-                leaf.data.o2i[far_node_idx] = outgoing2incoming(fact, recentered_tgt, timeit)
+                leaf.o2i[far_node_idx] = outgoing2incoming(fact, recentered_tgt, timeit)
             end
         else
             if timeit
-                @timeit fact.to "outgoing2incoming" leaf.data.o2i[far_node_idx] = fact.kernel.(leaf.data.points, permutedims(far_node.data.points))
+                @timeit fact.to "outgoing2incoming" leaf.o2i[far_node_idx] = fact.kernel.(leaf.points, permutedims(far_node.points))
             else
-                leaf.data.o2i[far_node_idx] = fact.kernel.(leaf.data.points, permutedims(far_node.data.points))
+                leaf.o2i[far_node_idx] = fact.kernel.(leaf.points, permutedims(far_node.points))
             end
         end
     end

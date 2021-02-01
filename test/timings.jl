@@ -7,7 +7,7 @@ using TimerOutputs
 to = TimerOutput()
 
 N                 = 2*8192  # Number of points
-max_dofs_per_leaf = 512  # When to stop in tree decomposition
+max_dofs_per_leaf = 350  # When to stop in tree decomposition
 precond_param     = 2max_dofs_per_leaf  # Size of diag blocks to inv for preconditioner
 
 trunc_param = 5
@@ -18,6 +18,7 @@ alpha = dimension/2 - 1
 # Lookup table for transformation coefficients
 scale   = 10
 points  = [scale .* rand(dimension) for i in 1:N]
+# points  = [rand() > 0.5 ? randn(dimension) : 5*ones(dimension)+randn(dimension) for i in 1:N]
 
 # define kernel
 using CovarianceFunctions
