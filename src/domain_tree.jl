@@ -1,4 +1,6 @@
-
+# module tree
+# using Plots
+# using LinearAlgebra
 # This struct stores domain tree nodes' data, including anything that makes
 # matvec'ing faster due to precomputation and storage at factor time
 mutable struct BallNode{PT<:AbstractVector{<:AbstractVector{<:Real}},
@@ -25,6 +27,7 @@ mutable struct BallNode{PT<:AbstractVector{<:AbstractVector{<:Real}},
   o2i::OIT
   left_child
   right_child
+  parent
   center
   splitter_normal # nothing if leaf
 end
@@ -42,7 +45,7 @@ function BallNode(isprecond, dimension, ctr, points, point_indices = collect(1:l
   o2i = fill(s2o, 0)
   BallNode(isprecond, dimension, points, point_indices,
            near_indices, neighbors, far_nodes, outgoing,
-           near_mat, diag_block, s2o, o2i, nothing, nothing, ctr, nothing)
+           near_mat, diag_block, s2o, o2i, nothing, nothing, nothing, ctr, nothing)
 end
 
 
@@ -145,7 +148,8 @@ function rec_split!(bt, node)
 
   left_node = BallNode(false, node.dimension, left_center, left_points, left_indices)
   right_node = BallNode(false, node.dimension, right_center, right_points, right_indices)
-
+  left_node.parent = node
+  right_node.parent = node
   push!(bt.allnodes, left_node)
   push!(bt.allnodes, right_node)
   node.left_child = left_node
@@ -175,6 +179,59 @@ function initialize_tree(points, max_dofs_per_leaf)
     end
   end
   compute_near_far_nodes!(bt)
-
+  # num_neighbors = sum([length(node.neighbors) for node in bt.allleaves])
+  # println("Avg neighborhood: ", num_neighbors/length(bt.allleaves))
   return bt
 end
+
+# N=8000
+# dimension = 2
+# max_dofs_per_leaf = 100
+# points  = [randn(dimension) for i in 1:N]  # [rand() > 0.5 ? randn(dimension) : 3*ones(dimension)+randn(dimension) for i in 1:N]
+# t = initialize_tree(points, max_dofs_per_leaf)
+#
+# scatter([pt[1] for pt in points], [pt[2] for pt in points], markersize = 2.2, color = "blue", markerstrokewidth=0)
+#
+# for node in t.allnodes
+#   if isleaf(node) continue end
+#   split = [-node.splitter_normal[2], node.splitter_normal[1]]
+#   println("CTR ", node.center, " points ", length(node.points))
+#   node_rad_L = -10
+#   node_rad_R = 10
+#   endpt_L = 0
+#   endpt_R = 0
+#   # find where node ray intersects parents
+#   cur_node = node.parent
+#   while cur_node != nothing
+#     cur_split = [-cur_node.splitter_normal[2], cur_node.splitter_normal[1]]
+#     dx = cur_node.center[1]-node.center[1]
+#     dy = cur_node.center[2]-node.center[2]
+#     det = cur_split[1] * split[2] - cur_split[2] * split[1]
+#     u = (dy * cur_split[1] - dx * cur_split[2]) / det
+#     v = (dy * split[1] - dx * split[2]) / det
+#     if u > 0 && u < node_rad_R
+#       node_rad_R = u
+#     end
+#     if u < 0 && u > node_rad_L
+#       node_rad_L = u
+#     end
+#     cur_node = cur_node.parent
+#   end
+#   endpt_L = node.center + node_rad_L * split
+#   endpt_R = node.center + node_rad_R * split
+#   plot!([endpt_L[1],endpt_R[1]], [endpt_L[2],endpt_R[2]], width=3 , color="purple")
+# end
+#
+# leaf = t.allleaves[10]
+# leafrad = maximum([norm(pt-leaf.center) for pt in leaf.points])
+# # x(t) = cos(t)*leafrad + leaf.center[1]
+# # y(t) = sin(t)*leafrad + leaf.center[2]
+# # plot!(x, y, 0, 2pi, linewidth=4, color="black")
+# x2(t) = 1.5*cos(t)*leafrad + leaf.center[1]
+# y2(t) = 1.5*sin(t)*leafrad + leaf.center[2]
+# plot!(x2, y2, 0, 2pi, linewidth=4, color="black")
+# plot!( ylim=(-2,2), xlim=(-2,2), legend=false, ticks=false)
+# # plot!( ylim=(0,1), xlim=(0,1), legend=false, ticks=false)
+# gui()
+#
+# end
