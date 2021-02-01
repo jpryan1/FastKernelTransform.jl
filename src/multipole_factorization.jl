@@ -17,7 +17,7 @@ end
 function LinearAlgebra.factorize(mat::FmmMatrix)
     if length(mat.points) < mat.max_dofs_per_leaf
         x = mat.points
-        return factorize(k.(x, permutedims(x)))
+        return factorize(k.(x, permutedims(x))) # IDEA: use Gramian type
     else
         return fkt(mat)
     end
@@ -42,14 +42,22 @@ struct MultipoleFactorization{K, TO<:TimerOutput, MST, NT, TT<:Tree, FT, GT, RT<
     radial_fun_ranks::RT
 end
 
-# this should be specialized for types of the form p(x) * exp(q(x)) where p, q are polynomials
-qrable(kernel) = false
-
-# TODO: max_dofs_per_leaf < precond_param
-# takes arbitrary isotropic kernel function k as input and creates symbolic expression
-# IDEA: convert points to vector of static arrays, dispatch 2d (and 1d) implementation on its type!
 function MultipoleFactorization(kernel, points::AbstractVector{<:AbstractVector{<:Real}},
-                                max_dofs_per_leaf::Int, precond_param::Int, trunc_param::Int, to::TimerOutput)
+                                max_dofs_per_leaf::Int, precond_param::Int, trunc_param::Int, to::TimerOutput = TimerOutput())
+    dimension = length(points[1])
+    @timeit to "computing F and G" get_F, get_G, radial_fun_ranks = init_F_G(kernel, dimension, trunc_param, Val(qrable(kernel)))
+    MultipoleFactorization(kernel, points, max_dofs_per_leaf, precond_param,
+                           trunc_param, get_F, get_G, radial_fun_ranks, to)
+end
+
+# takes arbitrary isotropic kernel
+# IDEA: convert points to vector of static arrays, dispatch 2d (and 1d) implementation on its type!
+# IDEA: given radial_fun_ranks, can we get rid of trunc_param?
+function MultipoleFactorization(kernel, points::AbstractVector{<:AbstractVector{<:Real}},
+                                max_dofs_per_leaf::Int, precond_param::Int,
+                                trunc_param::Int, get_F, get_G, radial_fun_ranks::AbstractVector,
+                                to::TimerOutput = TimerOutput())
+    max_dofs_per_leaf < precond_param || throw(DomainError("max_dofs_per_leaf < precond_param"))
     npoints = length(points)
     dimension = length(points[1])
     multi_to_single = Dict() # TODO this doesn't need to be a dict anymore
@@ -104,8 +112,8 @@ function compute_transformation_mats!(fact::MultipoleFactorization)
     @timeit fact.to "parallel transformation_mats" begin
         @sync for leaf in fact.tree.allleaves
             if !isempty(leaf.points)
-                # @spawn transformation_mats_kernel!(fact, leaf, false) # have to switch off timers if parallel
-                transformation_mats_kernel!(fact, leaf, true) # have to switch off timers if parallel
+                @spawn transformation_mats_kernel!(fact, leaf, false) # have to switch off timers if parallel
+                # transformation_mats_kernel!(fact, leaf, true) # have to switch off timers if parallel
             end
         end
     end
@@ -126,7 +134,7 @@ function transformation_mats_kernel!(fact::MultipoleFactorization, leaf, timeit:
     if timeit
         @timeit fact.to "get near mat" leaf.near_mat = fact.kernel.(tgt_points, permutedims(src_points))
     else
-        leaf.near_mat = fact.kernel.(tgt_points, permutedims(src_points))
+        leaf.near_mat = fact.kernel.(tgt_points, permutedims(src_points)) # IDEA: make lazy if they are too large?
     end
     leaf.o2i = Vector{Matrix{Float64}}(undef, length(leaf.far_nodes))
     for far_node_idx in eachindex(leaf.far_nodes) # IDEA: parallelize?

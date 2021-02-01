@@ -47,6 +47,10 @@ function init_F_G(kernel, dimension::Int, trunc_param::Int, doQR::Val{true})
     return get_F, get_G, radial_fun_ranks
 end
 
+# this should be specialized for types of the form p(x) * exp(q(x)) where p, q are polynomials
+qrable(kernel) = false # set this to true if kernel is of the above form
+get_correction(kernel) = kernel # this should be equal to exp(q(x))
+
 function compute_f_g_tables(kernel, transform_coef_table::AbstractArray, dimension::Int, trunc_param::Int)
     @vars r, rprime
     p = trunc_param
@@ -57,10 +61,9 @@ function compute_f_g_tables(kernel, transform_coef_table::AbstractArray, dimensi
 
     sym_kernel = kernel(r) # TODO: make this smarter
     derivs = get_derivs(sym_kernel, p)
-    sym_correction = derivs[1]
-    correction = lambdify(sym_correction, [r])
-    # correction = (r)->exp(-r)
-    # sym_correction = correction(r)
+    correction = get_correction(kernel)
+    sym_correction = correction(r)
+
     for k in 0:p
         poly = 0
         for i in k:2:p
