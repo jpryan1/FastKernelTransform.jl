@@ -187,10 +187,11 @@ end
 # N=8000
 # dimension = 2
 # max_dofs_per_leaf = 100
-# points  = [randn(dimension) for i in 1:N]  # [rand() > 0.5 ? randn(dimension) : 3*ones(dimension)+randn(dimension) for i in 1:N]
+# # points  = [randn(dimension) for i in 1:N]  #
+# points = [rand() > 0.5 ? randn(dimension) : 3*ones(dimension)+randn(dimension) for i in 1:N]
 # t = initialize_tree(points, max_dofs_per_leaf)
 #
-# scatter([pt[1] for pt in points], [pt[2] for pt in points], markersize = 2.2, color = "blue", markerstrokewidth=0)
+# scatter([pt[1] for pt in points], [pt[2] for pt in points], markersize = 2.2, color = "brown", markerstrokewidth=0)
 #
 # for node in t.allnodes
 #   if isleaf(node) continue end
@@ -230,7 +231,7 @@ end
 # x2(t) = 1.5*cos(t)*leafrad + leaf.center[1]
 # y2(t) = 1.5*sin(t)*leafrad + leaf.center[2]
 # plot!(x2, y2, 0, 2pi, linewidth=4, color="black")
-# plot!( ylim=(-2,2), xlim=(-2,2), legend=false, ticks=false)
+# plot!( ylim=(-2,5), xlim=(-2,5), legend=false, ticks=false)
 # # plot!( ylim=(0,1), xlim=(0,1), legend=false, ticks=false)
 # gui()
 #
