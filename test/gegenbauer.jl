@@ -1,7 +1,8 @@
-module TestGegenbauer
+module TestHyperspherical
 using Test
 using FastKernelTransform: gegenbauer, chebyshev
 using SpecialPolynomials: Gegenbauer
+
 α = exp(randn())
 n = 0
 x = randn()
