@@ -26,7 +26,7 @@ using CovarianceFunctions: Exp, EQ, MaternP, Matern, Cauchy, difference
 
 ek(r) = exp(-r) # with short lengthscale, not as accurate?
 ek(x, y) = ek(norm(difference(x, y)))
-FastKernelTransform.qrable(::typeof(ek)) = true
+FastKernelTransform.qrable(::typeof(ek)) = false
 kernel = ek
 
 # Start with random data values at each point
