@@ -154,7 +154,6 @@ function transformation_mats_kernel!(fact::MultipoleFactorization, leaf, timeit:
             else
                 far_node.s2o = source2outgoing(fact, recentered_src, timeit)
             end
-            println("S20 height ", size(far_node.s2o,1))
         end
 
         if (num_multipoles * (m + tot_far_points)) < (m * tot_far_points)

@@ -16,7 +16,7 @@ dimension   = 3
 # Parameter used for Gegenbauer polynomials
 alpha = dimension/2 - 1
 # Lookup table for transformation coefficients
-# scale   = 10
+scale   = 10
 points  = [scale .* rand(dimension) for i in 1:N]
 # points  = [rand() > 0.5 ? randn(dimension) : 5*ones(dimension)+randn(dimension) for i in 1:N]
 
