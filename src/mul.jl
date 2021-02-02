@@ -1,7 +1,7 @@
 # matrix-vector multiplication and solves for MultipoleFactorization type
 import LinearAlgebra: *, mul!, \
 function *(fact::MultipoleFactorization, x::AbstractVector)
-    b = zeros(Complex{Float64}, size(x)) # TODO: complex vector necessary?
+    b = zeros(Complex{Float64}, size(fact,1)) # TODO: complex vector necessary?
     mul!(b, fact, x)
     real(b)
 end

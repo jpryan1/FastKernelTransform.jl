@@ -85,6 +85,29 @@ end
         names = ["EQ", "Exp", "Cauchy"] # ["Electro", "EQ", "Exp", "Cauchy"]
         fkt_test(kernels, x, y, max_dofs_per_leaf, precond_param, trunc_param, to)
     end
+
+    @testset "rectangle" begin
+
+        n, d = 4096, 3
+        max_dofs_per_leaf = 256  # When to stop in tree decomposition
+        precond_param     = 512  # Size of diag blocks to inv for preconditioner
+        trunc_param = 5
+        x1 = data_generator(n, d)
+        x2 = data_generator(n+4, d)
+        y = rand(n+4) # Start with random data values at each point
+        kernels = (eq, ek, Cauchy()) # (es, eq, ek, Cauchy())
+        names = ["EQ", "Exp", "Cauchy"] # ["Electro", "EQ", "Exp", "Cauchy"]
+        mat = FmmMatrix(ek, x1, x2, max_dofs_per_leaf, precond_param, trunc_param, to)
+        fact = factorize(mat)
+        kern_mat  = ek.(x1, permutedims(x2))
+        bbar = fact * y
+        b = kern_mat * y
+        println("relative error = $(norm(b-bbar)/norm(b))")
+        if norm(b-bbar)/norm(b) < 1e-10
+            println("Warning: far-field probably not called")
+        end
+        @test isapprox(b, bbar, rtol = rtol, atol = atol)
+    end
 end
 
 end # TestFastKernelTransform
