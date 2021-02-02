@@ -38,3 +38,19 @@ function rationalrrqr!(mat)
     R = Q \ mat
     return Q, R, perm
 end
+
+# create view into imaginary and real part of complex array
+function real_imag_views(z::AbstractVector{<:Complex})
+    z = reinterpret(Float64, z)
+    re = @view z[1:2:end-1]
+    im = @view z[2:2:end]
+    return re, im
+end
+
+function real_imag_views(Z::AbstractArray{<:Complex})
+    z = vec(Z)
+    re, im = real_imag_views(z)
+    Re = reshape(re, size(Z))
+    Im = reshape(im, size(Z))
+    return Re, Im
+end

@@ -1,15 +1,14 @@
 # matrix-vector multiplication and solves for MultipoleFactorization type
 import LinearAlgebra: *, mul!, \
 function *(fact::MultipoleFactorization, x::AbstractVector)
-    b = zeros(Complex{Float64}, size(fact,1)) # TODO: complex vector necessary?
+    b = similar(x, size(fact, 1))
     mul!(b, fact, x)
-    real(b)
 end
 \(fact::MultipoleFactorization, b::AbstractVector) = conj_grad(fact, b)
 
-function mul!(y::AbstractVector, fact::MultipoleFactorization, x::AbstractVector)
+function mul!(y::AbstractVector, fact::MultipoleFactorization, x::AbstractVector, α::Real = 1, β::Real = 0)
     _checksizes(y, fact, x)
-    num_multipoles = binomial(fact.trunc_param+fact.tree.dimension, fact.trunc_param)
+    num_multipoles = binomial(fact.trunc_param + fact.tree.dimension, fact.trunc_param)
     total_compressed = 0
     total_not_compressed = 0
     @sync for leaf in fact.tree.allleaves
@@ -17,7 +16,7 @@ function mul!(y::AbstractVector, fact::MultipoleFactorization, x::AbstractVector
         @spawn begin
             xi = x[leaf.near_indices]
             yi = @view y[leaf.tgt_point_indices]
-            mul!(yi, leaf.near_mat, xi, 1, 0) # near field interaction
+            mul!(yi, leaf.near_mat, xi, α, β) # near field interaction
             tot_far_points = sum([length(far_node.src_points) for far_node in leaf.far_nodes])
 
             for far_node_idx in eachindex(leaf.far_nodes)
@@ -25,7 +24,7 @@ function mul!(y::AbstractVector, fact::MultipoleFactorization, x::AbstractVector
                 if isempty(far_node.src_points) continue end
                 m = length(leaf.tgt_points)
                 if (num_multipoles * (m + tot_far_points)) < (m * tot_far_points)
-                    total_compressed +=1
+                    total_compressed += 1
                     if isempty(far_node.outgoing) # IDEA: have this pre-allocated in compute_transformation_mats
                         far_node.outgoing = far_node.s2o * x[far_node.src_point_indices]
                     end
@@ -34,7 +33,8 @@ function mul!(y::AbstractVector, fact::MultipoleFactorization, x::AbstractVector
                     total_not_compressed += 1
                     xi = x[far_node.src_point_indices]
                 end
-                mul!(yi, leaf.o2i[far_node_idx], xi, 1, 1) # yi should be real
+                o2i = leaf.o2i[far_node_idx]
+                multiply_helper!(yi, o2i, xi, α)
             end
         end
     end
@@ -44,6 +44,24 @@ function mul!(y::AbstractVector, fact::MultipoleFactorization, x::AbstractVector
         cell.outgoing = []
     end
     return y
+end
+
+# fallback for complex target
+function multiply_helper!(yi::AbstractVector{<:Complex}, o2i::AbstractMatrix, xi::AbstractVector, α::Real)
+    mul!(yi, leaf.o2i[far_node_idx], xi, α, 1) # yi is mathematically real
+end
+# only carries out relevant MVMs if target is real
+# o2i is complex
+function multiply_helper!(yi::AbstractVector{<:Real}, o2i::AbstractMatrix, xi::AbstractVector, α::Real)
+    Re, Im = real_imag_views(o2i)
+    if eltype(xi) <: Real
+        mul!(yi, Re, xi, α, 1)
+    else
+        re_xi, im_xi = real_imag_views(xi)
+        mul!(yi, Re, re_xi, α, 1)
+        mul!(yi, Im, im_xi, -α, 1)
+    end
+    return yi
 end
 
 # makes sure sizes of arguments for matrix multiplication agree
@@ -84,7 +102,6 @@ end
 function approx_inv(fact::MultipoleFactorization, b)
     total = zero(b)
     for cell in fact.tree.allnodes
-
         if !isa(cell.diag_block, Factorization)
             continue
         end

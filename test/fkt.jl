@@ -26,6 +26,7 @@ ek(r) = exp(-r) # with short lengthscale, not as accurate?
 ek(x, y) = ek(norm(difference(x, y)))
 
 FastKernelTransform.qrable(::typeof(ek)) = true
+FastKernelTransform.get_correction(::typeof(ek)) = ek
 
 atol = 1e-4
 rtol = 1e-4
@@ -58,23 +59,23 @@ end
         @test size(fact, 1) == n
         @test size(fact, 2) == n
         @test size(fact, 3) == 1
+        y = randn(n)
+        @test eltype(fact * y) <: Real 
     end
 
     @testset "2d" begin
-
         n, d = 4096, 2
         max_dofs_per_leaf = 256 # When to stop in tree decomposition
         precond_param     = 512  # Size of diag blocks to inv for preconditioner
         trunc_param = 5
         x = data_generator(n, d)
         y = rand(n) # Start with random data values at each point
-        kernels = [ek, Cauchy()]
+        kernels = (ek, Cauchy())
         names = ["Exp", "Cauchy"]
         fkt_test(kernels, x, y, max_dofs_per_leaf, precond_param, trunc_param, to)
     end
 
     @testset "3d" begin
-
         n, d = 4096, 3
         max_dofs_per_leaf = 256  # When to stop in tree decomposition
         precond_param     = 512  # Size of diag blocks to inv for preconditioner
@@ -87,7 +88,6 @@ end
     end
 
     @testset "rectangle" begin
-
         n, d = 4096, 3
         max_dofs_per_leaf = 256  # When to stop in tree decomposition
         precond_param     = 512  # Size of diag blocks to inv for preconditioner

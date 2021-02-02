@@ -49,7 +49,7 @@ using FastKernelTransform: transformation_coefficients, init_F_G, init_F, gegenb
         C = @. gegenbauer(1/2, k, cosγ) * rp^k / r^(k+1)
         result = dot(C, FG)
 
-        atol = 1e-6
+        atol = 1e-5
         @testset "qr = $doQR" begin
             @test isapprox(result, kernel(norm(x-xp)), atol = atol)
         end
