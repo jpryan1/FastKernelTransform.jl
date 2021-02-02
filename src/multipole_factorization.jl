@@ -74,7 +74,6 @@ function MultipoleFactorization(kernel, tgt_points::AbstractVector{<:AbstractVec
     multi_to_single = Dict() # TODO this doesn't need to be a dict anymore
     @timeit to "Populate normalizer table" normalizer_table = squared_hyper_normalizer_table(dimension, trunc_param)
     @timeit to "Initialize tree" tree = initialize_tree(tgt_points, src_points, max_dofs_per_leaf)
-    get_F, get_G, radial_fun_ranks = init_F_G(kernel, dimension, trunc_param, Val(qrable(kernel)))
 
     fact = MultipoleFactorization(kernel, precond_param, trunc_param, to,
                                 multi_to_single, normalizer_table, tree, n_tgt_points, n_src_points,
