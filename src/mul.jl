@@ -1,7 +1,7 @@
 # matrix-vector multiplication and solves for MultipoleFactorization type
 import LinearAlgebra: *, mul!, \
 function *(fact::MultipoleFactorization, x::AbstractVector)
-    b = zeros(Complex{Float64}, size(x)) # TODO: complex vector necessary?
+    b = zeros(Complex{Float64}, size(fact,1)) # TODO: complex vector necessary?
     mul!(b, fact, x)
     real(b)
 end
@@ -13,27 +13,26 @@ function mul!(y::AbstractVector, fact::MultipoleFactorization, x::AbstractVector
     total_compressed = 0
     total_not_compressed = 0
     @sync for leaf in fact.tree.allleaves
-        if isempty(leaf.points) continue end
+        if isempty(leaf.tgt_points) continue end
         @spawn begin
             xi = x[leaf.near_indices]
-            yi = @view y[leaf.point_indices]
+            yi = @view y[leaf.tgt_point_indices]
             mul!(yi, leaf.near_mat, xi, 1, 0) # near field interaction
-            tot_far_points = sum([length(far_node.points) for far_node in leaf.far_nodes])
+            tot_far_points = sum([length(far_node.src_points) for far_node in leaf.far_nodes])
 
             for far_node_idx in eachindex(leaf.far_nodes)
                 far_node = leaf.far_nodes[far_node_idx]
-                if isempty(far_node.points) continue end
-                m = length(leaf.point_indices)
-                n = length(far_node.point_indices)
+                if isempty(far_node.src_points) continue end
+                m = length(leaf.tgt_points)
                 if (num_multipoles * (m + tot_far_points)) < (m * tot_far_points)
                     total_compressed +=1
                     if isempty(far_node.outgoing) # IDEA: have this pre-allocated in compute_transformation_mats
-                        far_node.outgoing = far_node.s2o * x[far_node.point_indices]
+                        far_node.outgoing = far_node.s2o * x[far_node.src_point_indices]
                     end
                     xi = far_node.outgoing
                 else
                     total_not_compressed += 1
-                    xi = x[far_node.point_indices]
+                    xi = x[far_node.src_point_indices]
                 end
                 mul!(yi, leaf.o2i[far_node_idx], xi, 1, 1) # yi should be real
             end

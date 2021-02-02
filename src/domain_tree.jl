@@ -14,9 +14,11 @@ mutable struct BallNode{PT<:AbstractVector{<:AbstractVector{<:Real}},
                       CT}
   is_precond_node::Bool  # is Node whose diag block is inv'd for precond TODO may be unnecessary
   dimension::Int
-  points::PT # how to keep this type general? (i.e. subarray) + 1d?
-  point_indices::PIT
+  tgt_points::PT # how to keep this type general? (i.e. subarray) + 1d?
+  tgt_point_indices::PIT
   near_indices::PIT
+  src_points::PT
+  src_point_indices::PIT
   neighbors::NT
   far_nodes::NT
   outgoing::OT  # This is an array of multipole coefficients, created at matvec time
@@ -34,7 +36,7 @@ end
 
 
 # constructor convenience
-function BallNode(isprecond, dimension, ctr, points, point_indices = collect(1:length(points)))
+function BallNode(isprecond, dimension, ctr, tgt_points, tgt_point_indices, src_points, src_point_indices)
   near_indices = zeros(Int, 0)
   neighbors = Vector(undef, 0)
   far_nodes = Vector(undef, 0)
@@ -43,10 +45,12 @@ function BallNode(isprecond, dimension, ctr, points, point_indices = collect(1:l
   diag_block = cholesky(zeros(0, 0), Val(true), check = false) # TODO this forces the DT type in NodeData to be a Cholesky, should it?
   s2o = zeros(Complex{Float64}, 0, 0)
   o2i = fill(s2o, 0)
-  BallNode(isprecond, dimension, points, point_indices,
-           near_indices, neighbors, far_nodes, outgoing,
+
+  BallNode(isprecond, dimension, tgt_points, tgt_point_indices,
+           near_indices, src_points, src_point_indices, neighbors, far_nodes, outgoing,
            near_mat, diag_block, s2o, o2i, nothing, nothing, nothing, ctr, nothing)
 end
+
 
 struct Tree{T<:Real, R<:BallNode, V<:AbstractVector{<:BallNode}}
     dimension::Int64
@@ -57,9 +61,11 @@ struct Tree{T<:Real, R<:BallNode, V<:AbstractVector{<:BallNode}}
     neighbor_scale::T
 end
 
+
 function isleaf(node::BallNode)
     return node.splitter_normal == nothing
 end
+
 
 function plane_intersects_sphere(plane_center, splitter_normal,
         sphere_center, sphere_leafrad)
@@ -69,10 +75,12 @@ function plane_intersects_sphere(plane_center, splitter_normal,
           * dot(sphere_left_pole - plane_center, splitter_normal) < 0)
 end
 
+
 # Compute neighbor lists (note: ONLY FOR LEAVES at this time)
 function compute_near_far_nodes!(bt)
   for leaf in bt.allleaves
-    leafrad = maximum([norm(pt-leaf.center) for pt in leaf.points])
+    pts = vcat(leaf.tgt_points, leaf.src_points)
+    leafrad = maximum([norm(pt-leaf.center) for pt in pts])
     cur_node = bt.root
     node_queue = [bt.root]
     while length(node_queue) > 0
@@ -101,6 +109,7 @@ function compute_near_far_nodes!(bt)
   end
 end
 
+
 using CovarianceFunctions: difference
 function find_farthest(far_pt, pts)
     max_dist = 0
@@ -115,42 +124,60 @@ function find_farthest(far_pt, pts)
     return cur_farthest
 end
 
+
 function rec_split!(bt, node)
-  pt_L = find_farthest(node.center, node.points)
-  pt_R = find_farthest(pt_L, node.points)
+  pt_L = find_farthest(node.center, vcat(node.tgt_points, node.src_points))
+  pt_R = find_farthest(pt_L,  vcat(node.tgt_points, node.src_points))
   splitter_normal = pt_R-pt_L
   splitter_normal /= norm(splitter_normal)
 
   node.splitter_normal = splitter_normal
 
-  T = eltype(node.points)
-  left_points = Vector{T}(undef, 0)
-  right_points = Vector{T}(undef, 0)
-  left_indices = zeros(Int, 0)
-  right_indices = zeros(Int, 0)
+  T = eltype(node.tgt_points)
+  left_tgt_points = Vector{T}(undef, 0)
+  right_tgt_points = Vector{T}(undef, 0)
+  left_tgt_indices = zeros(Int, 0)
+  right_tgt_indices = zeros(Int, 0)
+  left_src_points = Vector{T}(undef, 0)
+  right_src_points = Vector{T}(undef, 0)
+  left_src_indices = zeros(Int, 0)
+  right_src_indices = zeros(Int, 0)
 
-  for i in eachindex(node.points)
-    pt = node.points[i]
+  for i in eachindex(node.tgt_points)
+    pt = node.tgt_points[i]
     if dot(pt-node.center, splitter_normal) > 0
-      push!(right_indices, node.point_indices[i])
-      push!(right_points, pt)
+      push!(right_tgt_indices, node.tgt_point_indices[i])
+      push!(right_tgt_points, pt)
     else
-      push!(left_indices, node.point_indices[i])
-      push!(left_points, pt)
+      push!(left_tgt_indices, node.tgt_point_indices[i])
+      push!(left_tgt_points, pt)
+    end
+  end
+  for i in eachindex(node.src_points)
+    pt = node.src_points[i]
+    if dot(pt-node.center, splitter_normal) > 0
+      push!(right_src_indices, node.src_point_indices[i])
+      push!(right_src_points, pt)
+    else
+      push!(left_src_indices, node.src_point_indices[i])
+      push!(left_src_points, pt)
     end
   end
 
+  left_points = vcat(left_tgt_points, left_src_points)
+  right_points = vcat(right_tgt_points, right_src_points)
+
   left_center = sum(left_points)/length(left_points)
   right_center = sum(right_points)/length(right_points)
-
-  left_node = BallNode(false, node.dimension, left_center, left_points, left_indices)
-  right_node = BallNode(false, node.dimension, right_center, right_points, right_indices)
+  left_node = BallNode(false, node.dimension, left_center, left_tgt_points, left_tgt_indices, left_src_points, left_src_indices)
+  right_node = BallNode(false, node.dimension, right_center, right_tgt_points, right_tgt_indices, right_src_points, right_src_indices)
   left_node.parent = node
   right_node.parent = node # IDEA: recurse before constructing node?
   push!(bt.allnodes, left_node)
   push!(bt.allnodes, right_node)
   node.left_child = left_node
   node.right_child = right_node
+
   if length(left_points) > bt.max_dofs_per_leaf
     rec_split!(bt, left_node)
   end
@@ -163,15 +190,17 @@ function heuristic_neighbor_scale(dimension::Int)
     max(1,3 / sqrt(dimension))
 end
 
-function initialize_tree(points, max_dofs_per_leaf, neighbor_scale::Real = heuristic_neighbor_scale(length(points[1])))
-  dimension = length(points[1])
-  center = sum(points)/length(points)
+function initialize_tree(tgt_points, src_points, max_dofs_per_leaf,
+                    neighbor_scale::Real = heuristic_neighbor_scale(length(tgt_points[1])))
+  dimension = length(tgt_points[1])
+  center = sum(vcat(tgt_points,src_points))/(length(tgt_points)+length(src_points))
 
-  root = BallNode(false, dimension, center, points)
+  root = BallNode(false, dimension, center, tgt_points, collect(1:length(tgt_points)),
+    src_points, collect(1:length(src_points)))
   allnodes = [root]
   allleaves = fill(root, 0)
   bt = Tree(dimension, root, max_dofs_per_leaf, allnodes, allleaves, neighbor_scale)
-  if length(points) > max_dofs_per_leaf
+  if (length(tgt_points)+length(src_points)) > max_dofs_per_leaf
     rec_split!(bt, root)
   end
 
