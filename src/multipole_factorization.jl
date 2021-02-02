@@ -9,7 +9,7 @@ mutable struct FmmMatrix{K, V<:AbstractVector{<:AbstractVector{<:Real}}} # IDEA:
 end
 
 
-function FmmMatrix(kernel, points, max_dofs_per_leaf, precond_param, trunc_param, to)
+function FmmMatrix(kernel, points, max_dofs_per_leaf, precond_param, trunc_param, to::TimerOutput = TimerOutput())
     return FmmMatrix(kernel, points, points,max_dofs_per_leaf, precond_param, trunc_param, to)
 end
 
@@ -80,7 +80,9 @@ function MultipoleFactorization(kernel, tgt_points::AbstractVector{<:AbstractVec
                                 get_F, get_G, radial_fun_ranks)
     fill_index_mapping_tables!(fact)
     @timeit fact.to "Populate transformation table" compute_transformation_mats!(fact)
-    # if precond_param > 0 @timeit fact.to "Get diag inv for precond" compute_preconditioner!(fact) end
+    if tgt_points === src_points && precond_param > 0
+        @timeit fact.to "Get diag inv for precond" compute_preconditioner!(fact)
+    end
     return fact
 end
 
@@ -102,6 +104,23 @@ function fill_index_mapping_tables!(fact::MultipoleFactorization)
     end
 end
 
+# For preconditioner
+function compute_preconditioner!(fact::MultipoleFactorization)
+     node_queue = [fact.tree.root]
+     while !isempty(node_queue) # IDEA: parallelize
+         node = pop!(node_queue)
+         if length(node.tgt_point_indices) < fact.precond_param
+             tgt_points = node.tgt_points
+             # IDEA: can the kernel matrix be extracted from node.near_mat?
+             K = fact.kernel.(tgt_points, permutedims(tgt_points))
+             node.diag_block = cholesky!(K, Val(true), tol = 1e-6, check = false) # in-place
+         else
+             push!(node_queue, node.left_child)
+             push!(node_queue, node.right_child)
+         end
+     end
+     return fact
+ end
 
 function compute_transformation_mats!(fact::MultipoleFactorization)
     @timeit fact.to "parallel transformation_mats" begin

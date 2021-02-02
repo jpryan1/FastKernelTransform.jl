@@ -1,12 +1,13 @@
 # matrix-vector multiplication and solves for MultipoleFactorization type
 import LinearAlgebra: *, mul!, \
-function *(fact::MultipoleFactorization, x::AbstractVector)
+function *(fact::MultipoleFactorization, x::AbstractVector; verbose::Bool = false)
     b = similar(x, size(fact, 1))
-    mul!(b, fact, x)
+    mul!(b, fact, x, verbose = verbose)
 end
 \(fact::MultipoleFactorization, b::AbstractVector) = conj_grad(fact, b)
 
-function mul!(y::AbstractVector, fact::MultipoleFactorization, x::AbstractVector, α::Real = 1, β::Real = 0)
+# IDEA: could pass data structure that reports how many compressions took place
+function mul!(y::AbstractVector, fact::MultipoleFactorization, x::AbstractVector, α::Real = 1, β::Real = 0; verbose::Bool = false)
     _checksizes(y, fact, x)
     num_multipoles = binomial(fact.trunc_param + fact.tree.dimension, fact.trunc_param)
     total_compressed = 0
@@ -38,7 +39,7 @@ function mul!(y::AbstractVector, fact::MultipoleFactorization, x::AbstractVector
             end
         end
     end
-    println("Compressed: ",total_compressed," not compressed: ", total_not_compressed)
+    verbose && println("Compressed: ",total_compressed," not compressed: ", total_not_compressed)
     # clean up IDEA: have this pre-allocated in compute_transformation_mats
     for cell in fact.tree.allnodes
         cell.outgoing = []
@@ -75,37 +76,51 @@ function _checksizes(y::AbstractVector, fact::MultipoleFactorization, x::Abstrac
     end
 end
 
-function conj_grad(fact::MultipoleFactorization, b::Array{Float64, 1})
-    x = rand(length(b))
-    Ax = fact * x
+function conj_grad(fact::MultipoleFactorization, b::Array{Float64, 1};
+                   max_iter::Int = 128, tol::Real = 1e-3, precond::Bool = true, verbose::Bool = false)
+    conj_grad!(zero(b), fact, b, max_iter = max_iter, tol = tol, precond = precond, verbose = verbose)
+end
+
+function conj_grad!(x::AbstractVector, fact::MultipoleFactorization, b::AbstractVector;
+                    max_iter::Int = 128, tol::Real = 1e-3, precond::Bool = true, verbose::Bool = false)
+    Ax = all(==(0), b) ? zero(x) : fact * x
     r = b - Ax
     z = approx_inv(fact, r)
-    p = z
-    rsold = dot(r,z)
-    for i in 1:100
-        @timeit fact.to "CG MV" Ap = fact * p
+    p = copy(z)
+    Ap = similar(p)
+    rsold = dot(r, z)
+
+    for i in 1:max_iter
+        @timeit fact.to "CG MV" mul!(Ap, fact, p)
+
         alpha = rsold / dot(p, Ap)
-        x = x + alpha * p
-        r = r - alpha * Ap
-        @timeit fact.to "CG LS" z = approx_inv(fact, r)
-        rsnew = dot(r,z)
-        println(i, " res ", rsnew)
-        if sqrt(rsnew) < 1e-5
-              break
-        end
-        p = z + (rsnew / rsold) * p;
+        @. x = x + alpha * p
+        @. r = r - alpha * Ap
+
+        # if precond # what else changes?
+        @timeit fact.to "CG LS" approx_inv!(z, fact, r)
+        # end
+        rsnew = dot(r, z)
+        verbose && println(i, " res ", rsnew)
+        sqrt(rsnew) > tol || break
+        @. p = z + (rsnew / rsold) * p;
         rsold = rsnew
     end
     return x
 end
 
-function approx_inv(fact::MultipoleFactorization, b)
-    total = zero(b)
-    for cell in fact.tree.allnodes
-        if !isa(cell.diag_block, Factorization)
-            continue
+approx_inv(fact::MultipoleFactorization, b::AbstractVector) = approx_inv!(zero(b), fact, b)
+function approx_inv!(total::AbstractVector, fact::MultipoleFactorization, b::AbstractVector)
+    @sync for cell in fact.tree.allnodes
+        A = cell.diag_block
+        if A isa Factorization && prod(size(A)) > 0
+            @spawn begin # IDEA: cell.tgt_point_indices ≡ cell.src_point_indices || throw()
+                ind = cell.tgt_point_indices
+                x = b[ind]
+                ldiv!(A, x)
+                @. total[ind] = x
+            end
         end
-        total[cell.point_indices] =  cell.diag_block \ b[cell.point_indices]
     end
     return total
 end
