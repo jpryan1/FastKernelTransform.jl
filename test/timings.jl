@@ -7,7 +7,7 @@ using TimerOutputs
 to = TimerOutput()
 
 N                 = 2*8192  # Number of points
-max_dofs_per_leaf = 512  # When to stop in tree decomposition
+max_dofs_per_leaf = 256  # When to stop in tree decomposition
 precond_param     = 2max_dofs_per_leaf  # Size of diag blocks to inv for preconditioner
 
 trunc_param = 5
@@ -18,11 +18,22 @@ alpha = dimension/2 - 1
 # Lookup table for transformation coefficients
 scale   = 10
 points  = [scale .* rand(dimension) for i in 1:N]
+# points  = [rand() > 0.5 ? randn(dimension) : 5*ones(dimension)+randn(dimension) for i in 1:N]
+
+# σ = .25
+# c = 2
+# data_generator(n, d) = gaussian_mixture_data(n, c, d, σ)
+
 
 # define kernel
 using CovarianceFunctions
-using CovarianceFunctions: Exp, EQ, MaternP, Matern, Cauchy
-kernel = Exp()
+using CovarianceFunctions: Exp, EQ, MaternP, Matern, Cauchy, difference
+# kernel = Exp()
+
+ek(r) = exp(-r) # with short lengthscale, not as accurate?
+ek(x, y) = ek(norm(difference(x, y)))
+FastKernelTransform.qrable(::typeof(ek)) = false
+kernel = ek
 
 # Start with random data values at each point
 x = rand(N)

@@ -15,50 +15,62 @@ function get_derivs(kernel::Basic, trunc_param::Int64)
     return derivs
 end
 
-# const QRable = Union{EQ, Exp, MaternP}
-# if kernel isa QRable
-#     # do qr
-# end
-# function divisor(::EQ)
-#     @vars r
-#     return EQ()(r)
-# end
-#
-# function divisor(k::Lengthscale)
-#     @vars r
-#     return EQ()(r)
-#     return divisor(k.k) # k.l
-# end
-
+# IDEA can we encapsulate radial_fun_ranks in get_F, get_G?
 function init_F_G(kernel, dimension::Int, trunc_param::Int, doQR::Val{true})
-    f = transformation_coefficients(d, trunc_param, BigInt)
-    F_coeff, G_coeff, radial_fun_ranks = compute_f_g_tables(kernel, transform_coef_table::AbstractArray{<:Real, }, dimension::Int, trunc_param::Int)
-    function get_F(r::AbstractVector{<:Real})
-        return -1
+    f = transformation_coefficients(dimension, trunc_param, Rational{BigInt})
+    F_coeff, G_coeff, radial_fun_ranks, correction, lowest_pow_r = compute_f_g_tables(kernel, f, dimension, trunc_param)
+    function get_F(r::AbstractVector)
+        val = similar(r)
+        corr = correction.(r)
+        function F(k::Int, i::Int) # returns F_ki applied to r
+            @. val = 0
+            Fki = @view F_coeff[:, k+1, i+1]
+            for j in eachindex(Fki)
+                pow = j-1
+                @. val += r ^ (pow + lowest_pow_r[k+1]) * Fki[j]
+            end
+            return val .*= corr
+        end
     end
-    function get_G(r::AbstractVector{<:Real})
-        return -1
+    function get_G(rprime::AbstractVector)
+        val = similar(rprime)
+        function G(k::Int, i::Int) # returns G_ki applied to r
+            @. val = 0
+            Gki = @view G_coeff[:, k+1, i+1]
+            for j in eachindex(Gki)
+                pow = j-1
+                @. val += (rprime ^ pow) * Gki[j]
+            end
+            return val
+        end
     end
-    return get_F, get_G # can we encapsulate radial_fun_ranks?
+    return get_F, get_G, radial_fun_ranks
 end
+
+# this should be specialized for types of the form p(x) * exp(q(x)) where p, q are polynomials
+qrable(kernel) = false # set this to true if kernel is of the above form
+get_correction(kernel) = kernel # this should be equal to exp(q(x))
 
 function compute_f_g_tables(kernel, transform_coef_table::AbstractArray, dimension::Int, trunc_param::Int)
     @vars r, rprime
     p = trunc_param
-    # F_coeff = zeros(p+1, p+1, p+1) # TODO: make powers of r dimension the first for cache locality
-    # G_coeff = zeros(p+1, p+1, p+1)
-    F_coeff = fill(Dict(), p+1, p+1)
-    G_coeff = fill(Dict(), p+1, p+1)
+    F_coeff = zeros(p+1, p+1, p+1) # TODO: make powers of r dimension the first for cache locality
+    G_coeff = zeros(p+1, p+1, p+1)
     radial_fun_ranks = zeros(Int, p+1)
-    correction = fact.derivs[1]
-    derivs = get_derivs(kernel, p)
+    lowest_pow_r = zeros(Int, p+1)
+
+    sym_kernel = kernel(r) # TODO: make this smarter
+    derivs = get_derivs(sym_kernel, p)
+    correction = get_correction(kernel)
+    sym_correction = correction(r)
+
     for k in 0:p
         poly = 0
         for i in k:2:p
             if i != 0
                 tot = 0
                 for m in 1:i
-                    tot += derivs[m+1] * r^(m-i+k+1) * transform_coef_table[i, k, m]
+                    tot += derivs[m+1] * r^(m-i+k+1) * transform_coef_table[i+1, k+1, m+1]
                 end
                 poly += tot * rprime^(i-k)
             else
@@ -66,13 +78,13 @@ function compute_f_g_tables(kernel, transform_coef_table::AbstractArray, dimensi
             end
         end
 
-        poly = expand(poly/correction)
-        poly = expand(subs(poly, (correction/correction)=>1))
-        lowest_pow_r = 0
+        poly = expand(poly / sym_correction)
+        poly = expand(subs(poly, (sym_correction / sym_correction)=>1))
+        lowest_pow_r[k+1] = 0
         highest_pow_r = 0
         for i in -(100):(100)  # TODO smarter way to do these limits
             if coeff(poly, r, Basic(i)) != 0
-                lowest_pow_r = i
+                lowest_pow_r[k+1] = i
                 break
             end
         end
@@ -82,12 +94,11 @@ function compute_f_g_tables(kernel, transform_coef_table::AbstractArray, dimensi
                 break
             end
         end
-        println("Poly before correction")
-        poly = expand(poly / (r^lowest_pow_r))
+        poly = expand(poly / (r^lowest_pow_r[k+1]))
         # now lowest pow is 0
-        mat = Matrix{Complex{Rational{BigInt}}}(undef, trunc_param+1, max(highest_pow_r-lowest_pow_r, trunc_param+1))
+        mat = Matrix{Complex{Rational{BigInt}}}(undef, trunc_param+1, max(highest_pow_r - lowest_pow_r[k+1], trunc_param+1))
         mat[1, 1] = subs(poly, rprime=>0, r=>0)
-        for i in 2:(max(highest_pow_r-lowest_pow_r, trunc_param+1))
+        for i in 2:(max(highest_pow_r - lowest_pow_r[k+1], trunc_param+1))
             tmp = coeff(subs(poly, r=>0), rprime, Basic(i-1))
             num = convert(Complex{BigInt}, numerator(tmp))
             den = convert(Complex{BigInt}, denominator(tmp))
@@ -99,7 +110,7 @@ function compute_f_g_tables(kernel, transform_coef_table::AbstractArray, dimensi
             den = convert(Complex{BigInt}, denominator(tmp))
             mat[i, 1] = num//den
         end
-        for i in 1:(max(highest_pow_r-lowest_pow_r, trunc_param+1))
+        for i in 1:(max(highest_pow_r - lowest_pow_r[k+1], trunc_param+1))
             for j in 1:(trunc_param+1)
               tmp = coeff(coeff(poly, rprime, Basic(i-1)), r, Basic(j-1))
               num = convert(Complex{BigInt}, numerator(tmp))
@@ -111,27 +122,18 @@ function compute_f_g_tables(kernel, transform_coef_table::AbstractArray, dimensi
         Rmat = Rmat * transpose(Pmat)
         for i in 1:size(Rmat, 1)
             if @views all(==(0), Qmat[:, i]) || all(==(0), Rmat[i, :])
-                println("Rank ",i-1," it seems")
                 radial_fun_ranks[k+1] = i-1
-                # for j in (i):div(fact.trunc_param-k+2,2)
-                #     @. fact.F_coef_table[k+1, (k+1)+ 2(j-1), :] = 0
-                #     @. fact.G_coef_table[k+1, (k+1)+ 2(j-1), :] = 0
-                # end
                 break
             end
             r_poly = 0
             rprime_poly = 0
-            for j in 1:size(Qmat, 1)
-                r_pow = j - 1 + lowest_pow_r
-                rprime_pow = j-1
-                F_coeff[k+1, (k+1)+ 2(i-1)][r_pow] = convert(Float64, Qmat[j, i]) # * correction
-                G_coeff[k+1, (k+1)+ 2(i-1)][rprime_pow] = convert(Float64, Rmat[i, j])
-            end
+            @. F_coeff[:, k+1, (k+1)+ 2(i-1)] = Qmat[:, i]
+            @. G_coeff[:, k+1, (k+1)+ 2(i-1)] = Rmat[i, :]
         end
         new_poly = 0
         old_poly = 0
     end
-    return F_coeff, G_coeff, radial_fun_ranks
+    return F_coeff, G_coeff, radial_fun_ranks, correction, lowest_pow_r
 end
 
 # this could be pre-computed for common dimensions

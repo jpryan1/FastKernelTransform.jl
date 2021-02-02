@@ -1,40 +1,47 @@
 # matrix-vector multiplication and solves for MultipoleFactorization type
 import LinearAlgebra: *, mul!, \
-# TODO: complex vector necessary?
-*(fact::MultipoleFactorization, x::AbstractVector) = mul!(zeros(Complex{Float64}, size(x)), fact, x)
-# *(fact::MultipoleFactorization, x::AbstractVector) = mul!(zero(x), fact, x)
+function *(fact::MultipoleFactorization, x::AbstractVector)
+    b = zeros(Complex{Float64}, size(x)) # TODO: complex vector necessary?
+    mul!(b, fact, x)
+    real(b)
+end
 \(fact::MultipoleFactorization, b::AbstractVector) = conj_grad(fact, b)
 
 function mul!(y::AbstractVector, fact::MultipoleFactorization, x::AbstractVector)
     _checksizes(y, fact, x)
     num_multipoles = binomial(fact.trunc_param+fact.tree.dimension, fact.trunc_param)
-
-    @sync for leaf in allleaves(fact.tree.root)
-        if isempty(leaf.data.tgt_points) continue end
+    total_compressed = 0
+    total_not_compressed = 0
+    @sync for leaf in fact.tree.allleaves
+        if isempty(leaf.tgt_points) continue end
         @spawn begin
-            xi = x[leaf.data.near_indices]
-            yi = @view y[leaf.data.tgt_point_indices]
-            mul!(yi, leaf.data.near_mat, xi, 1, 0) # near field interaction
-            for far_node_idx in eachindex(leaf.data.far_nodes)
-                far_node = leaf.data.far_nodes[far_node_idx]
-                if isempty(far_node.data.src_points) continue end
-                m = length(leaf.data.tgt_points)
-                n = length(far_node.data.src_points)
-                if num_multipoles * (m + n) < m * n # true if fast multiply is more efficient
-                    if isempty(far_node.data.outgoing) # IDEA: have this pre-allocated in compute_transformation_mats
-                        far_node.data.outgoing = far_node.data.s2o * x[far_node.data.src_point_indices]
+            xi = x[leaf.near_indices]
+            yi = @view y[leaf.tgt_point_indices]
+            mul!(yi, leaf.near_mat, xi, 1, 0) # near field interaction
+            tot_far_points = sum([length(far_node.src_points) for far_node in leaf.far_nodes])
+
+            for far_node_idx in eachindex(leaf.far_nodes)
+                far_node = leaf.far_nodes[far_node_idx]
+                if isempty(far_node.src_points) continue end
+                m = length(leaf.tgt_points)
+                if (num_multipoles * (m + tot_far_points)) < (m * tot_far_points)
+                    total_compressed +=1
+                    if isempty(far_node.outgoing) # IDEA: have this pre-allocated in compute_transformation_mats
+                        far_node.outgoing = far_node.s2o * x[far_node.src_point_indices]
                     end
-                    xi = far_node.data.outgoing
+                    xi = far_node.outgoing
                 else
-                    xi = x[far_node.data.src_point_indices]
+                    total_not_compressed += 1
+                    xi = x[far_node.src_point_indices]
                 end
-                mul!(yi, leaf.data.o2i[far_node_idx], xi, 1, 1) # yi should be real
+                mul!(yi, leaf.o2i[far_node_idx], xi, 1, 1) # yi should be real
             end
         end
     end
+    println("Compressed: ",total_compressed," not compressed: ", total_not_compressed)
     # clean up IDEA: have this pre-allocated in compute_transformation_mats
-    for cell in allcells(fact.tree.root)
-        cell.data.outgoing = []
+    for cell in fact.tree.allnodes
+        cell.outgoing = []
     end
     return y
 end
@@ -76,11 +83,12 @@ end
 
 function approx_inv(fact::MultipoleFactorization, b)
     total = zero(b)
-    for cell in allcells(fact.tree.root)
-        if !isa(cell.data.diag_block, Factorization)
+    for cell in fact.tree.allnodes
+
+        if !isa(cell.diag_block, Factorization)
             continue
         end
-        total[cell.data.point_indices] =  cell.data.diag_block \ b[cell.data.point_indices]
+        total[cell.point_indices] =  cell.diag_block \ b[cell.point_indices]
     end
     return total
 end

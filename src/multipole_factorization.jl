@@ -44,71 +44,51 @@ struct MultipoleFactorization{K, TO<:TimerOutput, MST, NT, TT<:Tree, FT, GT, RT<
     radial_fun_ranks::RT
 end
 
-# TODO: max_dofs_per_leaf < precond_param
-# takes arbitrary isotropic kernel function k as input and creates symbolic expression
-# IDEA: convert points to vector of static arrays, dispatch 2d (and 1d) implementation on its type!
 function MultipoleFactorization(kernel, tgt_points::AbstractVector{<:AbstractVector{<:Real}},
-     src_points::AbstractVector{<:AbstractVector{<:Real}},
-                                max_dofs_per_leaf::Int, precond_param::Int, trunc_param::Int, to::TimerOutput)
+                                src_points::AbstractVector{<:AbstractVector{<:Real}},
+                                max_dofs_per_leaf::Int, precond_param::Int, trunc_param::Int, to::TimerOutput = TimerOutput())
+    dimension = length(tgt_points[1])
+    @timeit to "computing F and G" get_F, get_G, radial_fun_ranks = init_F_G(kernel, dimension, trunc_param, Val(qrable(kernel)))
+    MultipoleFactorization(kernel, tgt_points, src_points, max_dofs_per_leaf, precond_param,
+                           trunc_param, get_F, get_G, radial_fun_ranks, to)
+end
+
+# takes arbitrary isotropic kernel
+# IDEA: convert points to vector of static arrays, dispatch 2d (and 1d) implementation on its type!
+# IDEA: given radial_fun_ranks, can we get rid of trunc_param?
+function MultipoleFactorization(kernel, tgt_points::AbstractVector{<:AbstractVector{<:Real}},
+                                src_points::AbstractVector{<:AbstractVector{<:Real}},
+                                max_dofs_per_leaf::Int, precond_param::Int,
+                                trunc_param::Int, get_F, get_G, radial_fun_ranks::AbstractVector,
+                                to::TimerOutput = TimerOutput())
+    max_dofs_per_leaf < precond_param || throw(DomainError("max_dofs_per_leaf < precond_param"))
     n_tgt_points = length(tgt_points)
     n_src_points = length(src_points)
     dimension = length(tgt_points[1])
     multi_to_single = Dict() # TODO this doesn't need to be a dict anymore
-    normalizer_table = Matrix{Float64}(undef, trunc_param+1, length(get_multiindices(dimension, trunc_param)))
-    tree = initialize_tree(tgt_points, src_points, max_dofs_per_leaf)  #TODO tgt vs src points
-    get_F, get_G, radial_fun_ranks = init_F_G(kernel, dimension, trunc_param)
+    @timeit to "Populate normalizer table" normalizer_table = squared_hyper_normalizer_table(dimension, trunc_param)
+    @timeit to "Initialize tree" tree = initialize_tree(tgt_points, src_points, max_dofs_per_leaf)
+    get_F, get_G, radial_fun_ranks = init_F_G(kernel, dimension, trunc_param, Val(qrable(kernel)))
+
     fact = MultipoleFactorization(kernel, precond_param, trunc_param, to,
                                 multi_to_single, normalizer_table, tree, n_tgt_points, n_src_points,
                                 get_F, get_G, radial_fun_ranks)
     fill_index_mapping_tables!(fact)
-    if dimension > 2 @timeit fact.to "Populate normalizer table" fill_normalizer_table!(fact) end
     @timeit fact.to "Populate transformation table" compute_transformation_mats!(fact)
-    if precond_param > 0 @timeit fact.to "Get diag inv for precond" compute_preconditioner!(fact) end
+    # if precond_param > 0 @timeit fact.to "Get diag inv for precond" compute_preconditioner!(fact) end
     return fact
 end
 
 Base.size(F::MultipoleFactorization) = (F.n_tgt_points, F.n_src_points)
 Base.size(F::MultipoleFactorization, i::Int) = i > 2 ? 1 : (i==1 ? F.n_tgt_points : F.n_src_points)
 
-function fill_normalizer_table!(fact::MultipoleFactorization)
-    # upper arg ranges from 1//2 up to (2k+d-2)//2, by halves
-    d = fact.tree.dimension
-    k = fact.trunc_param
-    for k_idx in 0:fact.trunc_param
-        multiindices = get_multiindices(d, k_idx)
-        for (h_idx, h) in enumerate(multiindices)
-            h[end] = abs(h[end])
-            normalizer!(fact, k_idx, h, h_idx)
-        end
-    end
-end
-
-function normalizer!(fact, k, h, h_idx) # TODO no need to call this twice, just get rid of sqrt, move to one harmonic call?
-    m_vec = vcat(k, h) # TODO fix this hack
-    d = length(m_vec)+1
-    N2 = 2π
-    for j in 1:(d-2)
-        alpha_j = (d-j-1)//2
-        numer = (sqrt(π)
-                *gamma(alpha_j+m_vec[j+1]+(1//2))
-                *(alpha_j+m_vec[j+1])
-                *factorial(2alpha_j+m_vec[j]+m_vec[j+1]-1))
-        denom = (gamma(alpha_j+m_vec[j+1]+1)
-                *factorial(m_vec[j]-m_vec[j+1])
-                *(alpha_j+m_vec[j])
-                *factorial(2alpha_j+2*m_vec[j+1]-1))
-        N2 *= (numer/denom)
-    end
-    fact.normalizer_table[k+1,h_idx] = (N2)
-    return (N2)
-end
-
 function fill_index_mapping_tables!(fact::MultipoleFactorization)
     counter = 0
     for k in 0:fact.trunc_param
         multiindices = get_multiindices(fact.tree.dimension, k)
-        # for i in k:2:(k+2*(fact.radial_fun_ranks[k+1]-1))
-        for i in k:2:fact.trunc_param
+        r = fact.radial_fun_ranks[k+1]
+        max_i = k+2*(r-1)
+        for i in k:2:max_i
             for h in multiindices
                 counter += 1
                 fact.multi_to_single[(k, h, i)] = counter
@@ -117,10 +97,11 @@ function fill_index_mapping_tables!(fact::MultipoleFactorization)
     end
 end
 
+
 function compute_transformation_mats!(fact::MultipoleFactorization)
     @timeit fact.to "parallel transformation_mats" begin
-        @sync for leaf in allleaves(fact.tree.root)
-            if !isempty(leaf.data.tgt_points)
+        @sync for leaf in fact.tree.allleaves
+            if !isempty(leaf.tgt_points)
                 @spawn transformation_mats_kernel!(fact, leaf, false) # have to switch off timers if parallel
                 # transformation_mats_kernel!(fact, leaf, true) # have to switch off timers if parallel
             end
@@ -128,72 +109,52 @@ function compute_transformation_mats!(fact::MultipoleFactorization)
     end
 end
 
-# For preconditioner
-function compute_preconditioner!(fact::MultipoleFactorization)
-    node_queue = [fact.tree.root]
-    while !isempty(node_queue) # IDEA: parallelize
-        node = pop!(node_queue)
-        if length(node.data.tgt_points) < fact.precond_param
-            tgt_points = node.data.tgt_points
-            # IDEA: can the kernel matrix be extracted from node.data.near_mat?
-            K = fact.kernel.(tgt_points, permutedims(tgt_points))
-            node.data.diag_block = cholesky!(K) # in-place
-        else
-            append!(node_queue, children(node))
-        end
-    end
-end
-
 # computational kernel of transformation mats that is run in parallel
 function transformation_mats_kernel!(fact::MultipoleFactorization, leaf, timeit::Bool = true)
-
     num_multipoles = binomial(fact.trunc_param+fact.tree.dimension, fact.trunc_param)
 
-    tgt_points = leaf.data.tgt_points
-
-    src_points = leaf.data.src_points
-    src_points = vcat(src_points, [neighbor.data.src_points for neighbor in leaf.data.neighbors]...)
-    src_indices = copy(leaf.data.src_point_indices)
-    src_indices = vcat(src_indices, [neighbor.data.src_point_indices for neighbor in leaf.data.neighbors]...)
-
-    leaf.data.near_indices = src_indices
+    tgt_points = leaf.tgt_points
+    src_points = leaf.src_points
+    src_points = vcat(src_points, [neighbor.src_points for neighbor in leaf.neighbors]...)
+    src_indices = copy(leaf.src_point_indices)
+    src_indices = vcat(src_indices, [neighbor.src_point_indices for neighbor in leaf.neighbors]...)
+    leaf.near_indices = src_indices
 
     if timeit
-        @timeit fact.to "get near mat" leaf.data.near_mat = fact.kernel.(tgt_points, permutedims(src_points))
+        @timeit fact.to "get near mat" leaf.near_mat = fact.kernel.(tgt_points, permutedims(src_points))
     else
-        leaf.data.near_mat = fact.kernel.(tgt_points, permutedims(src_points))
+        leaf.near_mat = fact.kernel.(tgt_points, permutedims(src_points)) # IDEA: make lazy if they are too large?
     end
-    leaf.data.o2i = Vector{Matrix{Float64}}(undef, length(leaf.data.far_nodes))
-    for far_node_idx in eachindex(leaf.data.far_nodes) # IDEA: parallelize?
-        far_node = leaf.data.far_nodes[far_node_idx]
-        if isempty(far_node.data.src_points) continue end
-        src_points = far_node.data.src_points
-        center(x) = x - RegionTrees.center(far_node)
+
+    leaf.o2i = Vector{Matrix{Float64}}(undef, length(leaf.far_nodes))
+    tot_far_points = sum([length(far_node.src_points) for far_node in leaf.far_nodes])
+    for far_node_idx in eachindex(leaf.far_nodes) # IDEA: parallelize?
+        far_node = leaf.far_nodes[far_node_idx]
+        if isempty(far_node.src_points) continue end
+        src_points = far_node.src_points
+        center(x) = x - far_node.center
         recentered_tgt = center.(tgt_points)
         recentered_src = center.(src_points)
-        m = length(leaf.data.tgt_point_indices)
-        n = length(far_node.data.src_point_indices)
-
-        if isempty(far_node.data.s2o)
+        m = length(leaf.tgt_point_indices)
+        if isempty(far_node.s2o)
             if timeit
-                @timeit fact.to "source2outgoing" far_node.data.s2o = source2outgoing(fact, recentered_src)
+                @timeit fact.to "source2outgoing" far_node.s2o = source2outgoing(fact, recentered_src)
             else
-                far_node.data.s2o = source2outgoing(fact, recentered_src, timeit)
+                far_node.s2o = source2outgoing(fact, recentered_src, timeit)
             end
         end
-        if num_multipoles * (m + n) < m * n
-            println("Compressing!")
+
+        if (num_multipoles * (m + tot_far_points)) < (m * tot_far_points)
             if timeit
-                @timeit fact.to "outgoing2incoming" leaf.data.o2i[far_node_idx] = outgoing2incoming(fact, recentered_tgt)
+                @timeit fact.to "outgoing2incoming" leaf.o2i[far_node_idx] = outgoing2incoming(fact, recentered_tgt)
             else
-                leaf.data.o2i[far_node_idx] = outgoing2incoming(fact, recentered_tgt, timeit)
+                leaf.o2i[far_node_idx] = outgoing2incoming(fact, recentered_tgt, timeit)
             end
         else
-            println("Not compressing!")
             if timeit
-                @timeit fact.to "outgoing2incoming" leaf.data.o2i[far_node_idx] = fact.kernel.(leaf.data.tgt_points, permutedims(far_node.data.src_points))
+                @timeit fact.to "dense outgoing2incoming" leaf.o2i[far_node_idx] = fact.kernel.(leaf.tgt_points, permutedims(far_node.src_points))
             else
-                leaf.data.o2i[far_node_idx] = fact.kernel.(leaf.data.tgt_points, permutedims(far_node.data.src_points))
+                leaf.o2i[far_node_idx] = fact.kernel.(leaf.tgt_points, permutedims(far_node.src_points))
             end
         end
     end
@@ -201,7 +162,7 @@ end
 
 # IDEA: adaptive trunc_param, based on distance?
 function outgoing2incoming(fact::MultipoleFactorization, recentered_tgt::AbstractVector{<:AbstractVector{<:Real}}, timeit::Bool = true)
-    n, d, p = length(recentered_tgt), length(recentered_tgt[1]), fact.trunc_param
+    n, d = length(recentered_tgt), length(recentered_tgt[1])
     o2i_mat = zeros(Complex{Float64}, length(recentered_tgt), length(keys(fact.multi_to_single)))
     if timeit
         @timeit fact.to "norms" norms = norm.(recentered_tgt)
@@ -209,33 +170,44 @@ function outgoing2incoming(fact::MultipoleFactorization, recentered_tgt::Abstrac
         @timeit fact.to "ffun" ffun = fact.get_F(norms)
     else
         norms = norm.(recentered_tgt)
-        ra_hyps = map(cart2hyp, recentered_tgt)
+        ra_hyps = cart2hyp.(recentered_tgt)
         ffun = fact.get_F(norms)
     end
-    max_length_multi = binomial(p+d-1, p) - binomial(p+d-3, p-2) # maximum length of multiindices
-    hyp_harms = zeros(Complex{Float64}, max_length_multi, n) # pre-allocating
+    max_length_multi = max_num_multiindices(d, fact.trunc_param)
+    hyp_harms = zeros(Complex{Float64}, n, max_length_multi) # pre-allocating
     denoms = similar(norms)
     for k in 0:fact.trunc_param
         if timeit
             @timeit fact.to "multiindices" multiindices = get_multiindices(d, k)
-            hyp_harms_k = @view hyp_harms[1:length(multiindices), :]
-            @timeit fact.to "hypharmcalc" hyperharms!(hyp_harms_k, fact, k, ra_hyps, false, multiindices)
-            @timeit fact.to "denoms" denoms = norms .^ (k+1)
+            @timeit fact.to "hyperharms" begin
+                hyp_harms_k = @view hyp_harms[:, 1:length(multiindices)]
+                if d > 2
+                    hyp_harms_k .= hyperspherical.(ra_hyps, k, permutedims(multiindices), Val(false))
+                elseif d == 2
+                    hyp_harms_k .= hypospherical.(ra_hyps, k, permutedims(multiindices))
+                end # does not need to be normalized (done in s2o)
+            end
+            @timeit fact.to "denoms" @. denoms = norms^(k+1)
         else
             multiindices = get_multiindices(d, k)
-            hyp_harms_k = @view hyp_harms[1:length(multiindices), :]
-            hyperharms!(hyp_harms_k, fact, k, ra_hyps, false, multiindices)
+            hyp_harms_k = @view hyp_harms[:, 1:length(multiindices)]
+            if d > 2
+                hyp_harms_k .= hyperspherical.(ra_hyps, k, permutedims(multiindices), Val(false))
+            elseif d == 2
+                hyp_harms_k .= hypospherical.(ra_hyps, k, permutedims(multiindices)) # needs to be normalized
+            end
             @. denoms = norms^(k+1)
         end
-        # for i in k:2:(k+2*(fact.radial_fun_ranks[k+1]-1))
-        for i in k:2:fact.trunc_param
+        r = fact.radial_fun_ranks[k+1]
+        max_i = k+2*(r-1)
+        for i in k:2:max_i
             ind = [fact.multi_to_single[(k, multiindices[h_idx], i)] for h_idx in 1:length(multiindices)]
             if timeit
                 @timeit fact.to "f_coefs" F_coefs = ffun(k, i)
-                @timeit fact.to "store" @. o2i_mat[:, ind] = (hyp_harms_k' / denoms) * F_coefs
+                @timeit fact.to "store" @. o2i_mat[:, ind] = (hyp_harms_k / denoms) * F_coefs
             else
                 F_coefs = ffun(k, i)
-                @. o2i_mat[:, ind] = (hyp_harms_k' / denoms) * F_coefs
+                @. o2i_mat[:, ind] = (hyp_harms_k / denoms) * F_coefs
             end
         end
     end
@@ -244,7 +216,7 @@ end
 
 function source2outgoing(fact::MultipoleFactorization, recentered_src::AbstractVector{<:AbstractVector{<:Real}}, timeit::Bool = true)
     s2o_mat = zeros(Complex{Float64}, length(keys(fact.multi_to_single)), length(recentered_src))
-    n, d, p = length(recentered_src), length(recentered_src[1]), fact.trunc_param
+    n, d = length(recentered_src), length(recentered_src[1])
     rj_hyps = cart2hyp.(recentered_src)
     if timeit
         @timeit fact.to "norms" norms = norm.(recentered_src)
@@ -252,106 +224,52 @@ function source2outgoing(fact::MultipoleFactorization, recentered_src::AbstractV
         norms = norm.(recentered_src)
     end
     gfun = fact.get_G(norms)
-    max_length_multi = binomial(p+d-1, p) - binomial(p+d-3, p-2) # maximum length of multiindices
-    hyp_harms = zeros(Complex{Float64}, max_length_multi, n) # pre-allocating IDEA: reversing indices might improve cache locality
+    max_length_multi = max_num_multiindices(d, fact.trunc_param)
+    hyp_harms = zeros(Complex{Float64}, n, max_length_multi) # pre-allocating
     pows = similar(norms)
     for k in 0:fact.trunc_param
-        N_k_alpha = 1
-        if d > 2
-            N_k_alpha = inv((d+2k-2) * doublefact(d-4))
-            N_k_alpha = convert(Float64, N_k_alpha)
-            N_k_alpha *= iseven(d) ? (2π)^(d/2) : 2*(2π)^((d-1)/2)
-        end
+        N_k_alpha = gegenbauer_normalizer(d, k)
         if timeit
             @timeit fact.to "multiindices" multiindices = get_multiindices(d, k)
-            hyp_harms_k = @view hyp_harms[1:length(multiindices), :]
-            @timeit fact.to "hypharmcalc" hyperharms!(hyp_harms_k, fact, k, rj_hyps, true, multiindices)
-            @timeit fact.to "pows" pows = norms .^ (k)
+            # hyp_harms_k = @view hyp_harms[1:length(multiindices), :]
+            # @timeit fact.to "hypharmcalc" hyperharms!(hyp_harms_k, fact, k, rj_hyps, true, multiindices)
+            @timeit fact.to "hypharmcalc" begin
+                hyp_harms_k = @view hyp_harms[:, 1:length(multiindices)]
+                if d > 2
+                    hyp_harms_k .= hyperspherical.(rj_hyps, k, permutedims(multiindices), Val(false)) # needs to be normalized
+                    hyp_harms_k ./= fact.normalizer_table[k+1, 1:length(multiindices)]' # normalizing
+                    # hyp_harms_k .= hyperspherical.(rj_hyps, k, permutedims(multiindices), Val(true)) # needs to be normalized
+                elseif d == 2
+                    hyp_harms_k .= hypospherical.(rj_hyps, k, permutedims(multiindices)) # needs to be normalized
+                end
+            end
+            @timeit fact.to "pows" @. pows = norms^k
         else
             multiindices = get_multiindices(d, k)
-            hyp_harms_k = @view hyp_harms[1:length(multiindices), :]
-            hyperharms!(hyp_harms_k, fact, k, rj_hyps, true, multiindices)
+            hyp_harms_k = @view hyp_harms[:, 1:length(multiindices)]
+            if d > 2
+                hyp_harms_k .= hyperspherical.(rj_hyps, k, permutedims(multiindices), Val(false)) # needs to be normalized
+                hyp_harms_k ./= fact.normalizer_table[k+1, 1:length(multiindices)]'
+                # hyp_harms_k .= hyperspherical.(rj_hyps, k, permutedims(multiindices), Val(true)) # needs to be normalized
+            elseif d == 2
+                hyp_harms_k .= hypospherical.(rj_hyps, k, permutedims(multiindices)) # needs to be normalized
+            end
             @. pows = norms^k
         end
-        # for i in k:2:(k+2*(fact.radial_fun_ranks[k+1]-1))
-        for i in k:2:fact.trunc_param
+        r = fact.radial_fun_ranks[k+1]
+        max_i = k+2*(r-1)
+        for i in k:2:max_i
             ind = [fact.multi_to_single[(k, multiindices[h_idx], i)] for h_idx in 1:length(multiindices)]
             if timeit
                 @timeit fact.to "g_coefs" G_coefs = gfun(k, i)
-                @timeit fact.to "store" @. s2o_mat[ind, :] = N_k_alpha * conj(hyp_harms_k) * G_coefs' * pows'
+                @timeit fact.to "store" @. s2o_mat[ind, :] = N_k_alpha * $transpose(conj(hyp_harms_k) * G_coefs * pows)
             else
                 G_coefs = gfun(k, i)
-                @. s2o_mat[ind, :] = N_k_alpha * conj(hyp_harms_k) * G_coefs' * pows'
+                @. s2o_mat[ind, :] = N_k_alpha * $transpose(conj(hyp_harms_k) * G_coefs * pows)
             end
         end
     end
     return s2o_mat
-end
-
-# IDEA: change pt_hyps from vec of vec to matrix for cache locality
-function hyperharms(fact, k::Int, pt_hyps::AbstractVector, use_normalizer::Bool,
-                    multiindices = get_multiindices(length(pt_hyps[1]), k))
-    harms = Matrix{Complex{Float64}}(undef, length(multiindices), length(pt_hyps))
-    hyperharms!(harms, fact, k, pt_hyps, use_normalizer, multiindices)
-end
-
-function hyperharms!(harms, fact, k::Int, pt_hyps::AbstractVector, use_normalizer::Bool,
-                     multiindices = get_multiindices(length(pt_hyps[1]), k))
-    # TODO write unit test to check that addition theorem is respected
-    size(harms) == (length(multiindices), length(pt_hyps)) || throw(DimensionMismatch("$(size(harms)), $((length(multiindices), length(pt_hyps)))"))
-    d = length(pt_hyps[1])
-    if d == 2
-        if k == 0
-            @. harms[1, :] = 1
-            return harms
-        else
-            harms[1, :] .= ((x)->sin(k*x[2])).(pt_hyps)
-            harms[2, :] .= ((x)->cos(k*x[2])).(pt_hyps)
-            return harms
-        end
-    end
-    sins = map((x)->sin.(x[2:end]), pt_hyps)
-    coss = map((x)->cos.(x[2:end]), pt_hyps)
-
-    # i is alpha index
-    # n is polynomial order
-    # j is coss index
-    @inline function gegenbauer_helper!(r::AbstractVector, i, n, j)
-        _d = fact.tree.dimension
-        _k = fact.trunc_param
-        alphas = (1:(2*_k+_d-2)) / 2 # rational slows things down if we are otherwise doing FLOPs
-        α = alphas[i]
-        @. r = gegenbauer(α, n, getindex(coss, j)) # IDEA: @simd?
-    end
-    @inline function gegenbauer_helper(i, n, j)
-        r = zeros(length(coss))
-        gegenbauer_helper!(r, i, n, j)
-    end
-
-    for h_idx in 1:length(multiindices)
-        h = multiindices[h_idx]
-        neg_ind = h[d-2] < 0
-        h[d-2] = abs(h[d-2])
-        N = 1
-        if use_normalizer
-            N = fact.normalizer_table[k+1, h_idx]
-        end
-
-        gegenbauer = gegenbauer_helper(d-2+(2*h[1]), k-h[1], 1)
-        @. harms[h_idx, :] = (1/N) * exp(1im*h[d-2] * getindex(pt_hyps, d)) * getindex(sins, 1)^h[1] * gegenbauer
-        for j in 2:(d-2)
-            gegenbauer_helper!(gegenbauer, d-j-1+2*h[j], h[j-1]-h[j], j)
-            @. harms[h_idx, :] *= getindex(sins, j)^h[j] * gegenbauer
-        end
-
-        if neg_ind
-            @. harms[h_idx, :] = conj(harms[h_idx, :])
-        end
-        if neg_ind
-            h[d-2] *= -1
-        end
-    end
-    return harms
 end
 
 # function L(k,h,rj)

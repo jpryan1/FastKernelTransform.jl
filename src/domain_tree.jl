@@ -1,20 +1,19 @@
-import RegionTrees: AbstractRefinery, needs_refinement, refine_data
-import RegionTrees.Cell
-
+# module tree
+# using Plots
+# using LinearAlgebra
 # This struct stores domain tree nodes' data, including anything that makes
 # matvec'ing faster due to precomputation and storage at factor time
-mutable struct NodeData{PT<:AbstractVector{<:AbstractVector{<:Real}},
+mutable struct BallNode{PT<:AbstractVector{<:AbstractVector{<:Real}},
                       PIT<:AbstractVector{<:Int},
-                      NT<:AbstractVector{<:Cell},
+                      NT<:AbstractVector,
                       OT<:AbstractVector{<:Number},
                       MT<:AbstractMatrix{<:Real},
                       DT,
                       ST<:AbstractMatrix{<:Number},
-                      OIT<:AbstractVector{<:AbstractMatrix{<:Number}}}
-  is_precond_node::Bool  # is Node whose diag block is inv'd for precond
-  # TODO is_precond_node may be unnecessary
+                      OIT<:AbstractVector{<:AbstractMatrix{<:Number}},
+                      CT}
+  is_precond_node::Bool  # is Node whose diag block is inv'd for precond TODO may be unnecessary
   dimension::Int
-  level::Int
   tgt_points::PT # how to keep this type general? (i.e. subarray) + 1d?
   tgt_point_indices::PIT
   near_indices::PIT
@@ -28,209 +27,253 @@ mutable struct NodeData{PT<:AbstractVector{<:AbstractVector{<:Real}},
   # Below are source2outgoing and outgoing2incoming mats, created at factor time
   s2o::ST
   o2i::OIT
+  left_child # can be BallNode or Nothing
+  right_child # can be BallNode or Nothing
+  parent # can be BallNode or Nothing
+  center::CT
+  splitter_normal # nothing if leaf
 end
+
 
 # constructor convenience
-function NodeData(isprecond, dimension, level, tgt_points, tgt_point_indices,src_points, src_point_indices)
+function BallNode(isprecond, dimension, ctr, tgt_points, tgt_point_indices, src_points, src_point_indices)
   near_indices = zeros(Int, 0)
-  neighbors = Vector{Cell}(undef, 0)
-  far_nodes = Vector{Cell}(undef, 0)
+  neighbors = Vector(undef, 0)
+  far_nodes = Vector(undef, 0)
   outgoing = zeros(Complex{Float64}, 0)
   near_mat = zeros(0, 0)
-  diag_block = cholesky(zeros(0, 0)) # TODO this forces the DT type in NodeData to be a Cholesky, should it?
+  diag_block = cholesky(zeros(0, 0), Val(true), check = false) # TODO this forces the DT type in NodeData to be a Cholesky, should it?
   s2o = zeros(Complex{Float64}, 0, 0)
   o2i = fill(s2o, 0)
-  NodeData(isprecond, dimension, level, tgt_points, tgt_point_indices,
+
+  BallNode(isprecond, dimension, tgt_points, tgt_point_indices,
            near_indices, src_points, src_point_indices, neighbors, far_nodes, outgoing,
-           near_mat, diag_block, s2o, o2i)
+           near_mat, diag_block, s2o, o2i, nothing, nothing, nothing, ctr, nothing)
 end
 
-mutable struct TreeLevel
-  level::Int
-  nodes::Vector{Cell}
+
+struct Tree{T<:Real, R<:BallNode, V<:AbstractVector{<:BallNode}}
+    dimension::Int64
+    root::R
+    max_dofs_per_leaf::Int64
+    allnodes::V
+    allleaves::V
+    neighbor_scale::T
 end
 
-mutable struct Tree
-  dimension::Int64
-  root::Cell
-  levels::Vector{TreeLevel}
+
+function isleaf(node::BallNode)
+    return node.splitter_normal == nothing
 end
 
-# Check if A (a leaf) is touching B via checking infinity norm
-function are_adjacent(A::Cell, B::Cell, tol::Real = 1e-9)
-  rad = RegionTrees.center(A) - RegionTrees.center(B)
-  inf_norm = maximum(abs, rad)
-  should_be = maximum(A.boundary.widths) / 2 + maximum(B.boundary.widths) / 2
-  return abs(inf_norm - should_be) < tol
+
+function plane_intersects_sphere(plane_center, splitter_normal,
+        sphere_center, sphere_leafrad)
+  sphere_right_pole = sphere_center + sphere_leafrad * splitter_normal
+  sphere_left_pole = sphere_center - sphere_leafrad * splitter_normal
+  return (dot(sphere_right_pole - plane_center, splitter_normal)
+          * dot(sphere_left_pole - plane_center, splitter_normal) < 0)
 end
 
-# Check if cella (a leaf) is far from cellb via checking infinity norm
-function are_far(A::Cell, B::Cell, tol::Real = 1e-9)
-  rad = RegionTrees.center(A) - RegionTrees.center(B)
-  inf_norm = maximum(abs, rad)
-  bubble = maximum(A.boundary.widths) * 3/2 + maximum(B.boundary.widths) / 2
-  return inf_norm >= bubble - tol
-end
 
 # Compute neighbor lists (note: ONLY FOR LEAVES at this time)
-function compute_neighbors!(qt)
-  leaves = allleaves(qt.root)
-  for leaf in leaves
-    for level_node in qt.levels[leaf.data.level].nodes
-      if are_adjacent(leaf, level_node)
-        push!(leaf.data.neighbors, level_node)
-      end
-    end
-    for level_idx in (leaf.data.level-1):-1:2
-      for level_node in qt.levels[level_idx].nodes
-        if isleaf(level_node) && are_adjacent(leaf, level_node)
-          push!(leaf.data.neighbors, level_node)
+function compute_near_far_nodes!(bt)
+  for leaf in bt.allleaves
+    pts = vcat(leaf.tgt_points, leaf.src_points)
+    leafrad = maximum([norm(pt-leaf.center) for pt in pts])
+    cur_node = bt.root
+    node_queue = [bt.root]
+    while length(node_queue) > 0
+      cur_node = pop!(node_queue)
+      if isleaf(cur_node)
+        if cur_node != leaf
+          push!(leaf.neighbors, cur_node)
+        end
+      else
+        intersected = plane_intersects_sphere(cur_node.center,
+                        cur_node.splitter_normal, leaf.center, bt.neighbor_scale*leafrad)
+        if intersected
+          push!(node_queue, cur_node.left_child)
+          push!(node_queue, cur_node.right_child)
+        else
+          if dot(leaf.center-cur_node.center, cur_node.splitter_normal) > 0
+            push!(node_queue, cur_node.right_child)
+            push!(leaf.far_nodes, cur_node.left_child)
+          else
+            push!(node_queue, cur_node.left_child)
+            push!(leaf.far_nodes, cur_node.right_child)
+          end
         end
       end
     end
   end
 end
 
-# Compute neighbor lists (note: ONLY FOR LEAVES at this time)
-# Note the queue implementation - far node list is partition of faraway nodes
-# into as small a list as possible, ex: if node a and node a's child are far,
-# the far list only contains node a
-function compute_far_nodes!(qt)
-  leaves = allleaves(qt.root)
-  for leaf in leaves
-    node_queue = [qt.root]
-    while !isempty(node_queue)
-      node = pop!(node_queue)
-      if are_far(leaf, node)
-        push!(leaf.data.far_nodes, node)
-      elseif !isleaf(node) && node.data.level < leaf.data.level
-          append!(node_queue, children(node))
-      end
+
+using CovarianceFunctions: difference
+function find_farthest(far_pt, pts)
+    max_dist = 0
+    cur_farthest = far_pt
+    for p in pts
+        dist = norm(difference(p, far_pt))
+        if dist > max_dist
+            max_dist = dist
+            cur_farthest = p
+        end
+    end
+    return cur_farthest
+end
+
+
+function rec_split!(bt, node)
+  pt_L = find_farthest(node.center, vcat(node.tgt_points, node.src_points))
+  pt_R = find_farthest(pt_L,  vcat(node.tgt_points, node.src_points))
+  splitter_normal = pt_R-pt_L
+  splitter_normal /= norm(splitter_normal)
+
+  node.splitter_normal = splitter_normal
+
+  T = eltype(node.tgt_points)
+  left_tgt_points = Vector{T}(undef, 0)
+  right_tgt_points = Vector{T}(undef, 0)
+  left_tgt_indices = zeros(Int, 0)
+  right_tgt_indices = zeros(Int, 0)
+  left_src_points = Vector{T}(undef, 0)
+  right_src_points = Vector{T}(undef, 0)
+  left_src_indices = zeros(Int, 0)
+  right_src_indices = zeros(Int, 0)
+
+  for i in eachindex(node.tgt_points)
+    pt = node.tgt_points[i]
+    if dot(pt-node.center, splitter_normal) > 0
+      push!(right_tgt_indices, node.tgt_point_indices[i])
+      push!(right_tgt_points, pt)
+    else
+      push!(left_tgt_indices, node.tgt_point_indices[i])
+      push!(left_tgt_points, pt)
     end
   end
-end
-
-
-# Tree refinement
-struct DomainTreeRefinery <: AbstractRefinery
-  MAX_POINTS_IN_LEAF::Int64
-end
-
-function needs_refinement(r::DomainTreeRefinery, cell::Cell)
-  return max(length(cell.data.tgt_points),length(cell.data.src_points) )> r.MAX_POINTS_IN_LEAF
-end
-
-function refine_data(r::DomainTreeRefinery, cell::Cell, indices)
-  tgt_points = cell.data.tgt_points
-  tgt_child_points = Vector{Vector{Float64}}(undef, 0)
-  tgt_child_point_indices = zeros(Int, 0)
-  boundary = child_boundary(cell, indices)
-  c = RegionTrees.center(boundary)[:]
-  # Check inf norm dist of all points to child center
-  for i in eachindex(tgt_points)
-    pt = tgt_points[i]
-    rad = pt-c
-    inf_norm = maximum(abs, rad)
-    if inf_norm < maximum(boundary.widths) / 2
-      tgt_child_pt_idx = cell.data.tgt_point_indices[i]
-      push!(tgt_child_point_indices, tgt_child_pt_idx)
-      push!(tgt_child_points, tgt_points[i])
-    end
-  end
-
-  src_points = cell.data.src_points
-  src_child_points = Vector{Vector{Float64}}(undef, 0)
-  src_child_point_indices = zeros(Int, 0)
-  boundary = child_boundary(cell, indices)
-  c = RegionTrees.center(boundary)[:]
-  # Check inf norm dist of all points to child center
-  for i in eachindex(src_points)
-    pt = src_points[i]
-    rad = pt-c
-    inf_norm = maximum(abs, rad)
-    if inf_norm < maximum(boundary.widths) / 2
-      src_child_pt_idx = cell.data.src_point_indices[i]
-      push!(src_child_point_indices, src_child_pt_idx)
-      push!(src_child_points, src_points[i])
+  for i in eachindex(node.src_points)
+    pt = node.src_points[i]
+    if dot(pt-node.center, splitter_normal) > 0
+      push!(right_src_indices, node.src_point_indices[i])
+      push!(right_src_points, pt)
+    else
+      push!(left_src_indices, node.src_point_indices[i])
+      push!(left_src_points, pt)
     end
   end
 
+  left_points = vcat(left_tgt_points, left_src_points)
+  right_points = vcat(right_tgt_points, right_src_points)
 
-  NodeData(false, cell.data.dimension, cell.data.level+1, tgt_child_points,
-    tgt_child_point_indices, src_child_points, src_child_point_indices)
+  left_center = sum(left_points)/length(left_points)
+  right_center = sum(right_points)/length(right_points)
+  left_node = BallNode(false, node.dimension, left_center, left_tgt_points, left_tgt_indices, left_src_points, left_src_indices)
+  right_node = BallNode(false, node.dimension, right_center, right_tgt_points, right_tgt_indices, right_src_points, right_src_indices)
+  left_node.parent = node
+  right_node.parent = node # IDEA: recurse before constructing node?
+  push!(bt.allnodes, left_node)
+  push!(bt.allnodes, right_node)
+  node.left_child = left_node
+  node.right_child = right_node
+
+  if length(left_points) > bt.max_dofs_per_leaf
+    rec_split!(bt, left_node)
+  end
+  if length(right_points) > bt.max_dofs_per_leaf
+    rec_split!(bt, right_node)
+  end
 end
 
-# Helper function for plotting 3D
-function plot_box(plt, v)
-  pt_order = [1,2,4,3,1,5,6,2,6,8,4,8,7,3,7,5]
-  plot3d!(plt, v[1,pt_order], v[2,pt_order], v[3,pt_order])
+function heuristic_neighbor_scale(dimension::Int)
+    max(1,3 / sqrt(dimension))
 end
 
-
-function initialize_tree(tgt_points, src_points, max_dofs_per_leaf)
+function initialize_tree(tgt_points, src_points, max_dofs_per_leaf,
+                    neighbor_scale::Real = heuristic_neighbor_scale(length(tgt_points[1])))
   dimension = length(tgt_points[1])
-  # Get limits of root node for tree.
-  delta = 1e-2
-  src_point_min = minimum(minimum, src_points) - delta
-  src_point_max = maximum(maximum, src_points) + delta
-  tgt_point_min = minimum(minimum, tgt_points) - delta
-  tgt_point_max = maximum(maximum, tgt_points) + delta
-  point_min = min(src_point_min, tgt_point_min)
-  point_max = min(src_point_max, tgt_point_max)
+  center = sum(vcat(tgt_points,src_points))/(length(tgt_points)+length(src_points))
 
-  root_data = NodeData(false, dimension, 1, tgt_points, collect(1:length(tgt_points)),
+  root = BallNode(false, dimension, center, tgt_points, collect(1:length(tgt_points)),
     src_points, collect(1:length(src_points)))
-
-  crnr = [point_min for i in 1:dimension]
-  width = [point_max-point_min for i in 1:dimension]
-  # Create root node
-  boundary = RegionTrees.HyperRectangle(SVector{dimension}(crnr),
-    SVector{dimension}(width))
-  # Refine tree using RegionTrees adaptive sampling
-  refinery = DomainTreeRefinery(max_dofs_per_leaf)
-  root = RegionTrees.Cell(boundary, root_data)
-  adaptivesampling!(root, refinery)
-
-  # Populate list of levels, each level containing nodes at that level
-  levels = []
-  node_queue = [root]
-  while !isempty(node_queue)
-    node = pop!(node_queue)
-    if node.data.level > length(levels)
-      nodes = Vector{Cell}(undef, 0)
-      push!(levels, TreeLevel(node.data.level, nodes))
-    end
-    push!(levels[node.data.level].nodes, node)
-    if !isleaf(node)
-        append!(node_queue, children(node))
-    end
+  allnodes = [root]
+  allleaves = fill(root, 0)
+  bt = Tree(dimension, root, max_dofs_per_leaf, allnodes, allleaves, neighbor_scale)
+  if (length(tgt_points)+length(src_points)) > max_dofs_per_leaf
+    rec_split!(bt, root)
   end
 
-  qt = Tree(dimension, root, levels)
-  compute_neighbors!(qt)
-  compute_far_nodes!(qt)
-  # plt = plot3d(legend=nothing)
-  return qt
-
-
-  # total_num = 0
-  # for level in qt.levels
-  #   for node in level.nodes
-  #     total_num += length(node.data.points)/dimension
-  #   end
-  #   println("num level ",total_num)
-  #   total_num = 0
+  for node in bt.allnodes
+    if isleaf(node)
+      push!(bt.allleaves, node)
+    end
+  end
+  compute_near_far_nodes!(bt)
+  # num_neighbors = sum([length(node.neighbors) for node in bt.allleaves])
+  # println("Avg neighborhood: ", num_neighbors/length(bt.allleaves))
+  # tot_far = 0
+  # tot_leaf_points = 0
+  # for leaf in bt.allleaves
+  #   tot_leaf_points += length(leaf.points)
+  #   tot_far += length(leaf.far_nodes)
   # end
-  # for leaf in allleaves(root)
-  #   v = hcat(collect(vertices(leaf.boundary))...)
-  #   plot_box(plt, v)
-    # total_num = length(leaf.data.points)/dimension
-    # for neighbor in leaf.data.neighbors
-    #   total_num += length(neighbor.data.points)/dimension
-    # end
-    # for far in leaf.data.far_nodes
-    #   total_num += length(far.data.points)/dimension
-    # end
-  # end
-  # gui()
+  # println("Num leaves ", length(bt.allleaves))
+  # println("Num nodes ", length(bt.allnodes))
+  # println("Avg far ", tot_far/length(bt.allleaves))
+  # println("Avg leaf_points ", tot_leaf_points/length(bt.allleaves))
+  return bt
 end
+#
+# N=2000
+# dimension = 2
+# max_dofs_per_leaf = 100
+# # points  = [randn(dimension) for i in 1:N]  #
+# points = [rand() > 0.5 ? randn(dimension) : 3*ones(dimension)+randn(dimension) for i in 1:N]
+# t = initialize_tree(points, max_dofs_per_leaf)
+#
+# scatter([pt[1] for pt in points], [pt[2] for pt in points], markersize = 2.2, color = "sky blue", markerstrokewidth=0)
+#
+# for node in t.allnodes
+#   if isleaf(node) continue end
+#   split = [-node.splitter_normal[2], node.splitter_normal[1]]
+#   println("CTR ", node.center, " points ", length(node.points))
+#   node_rad_L = -10
+#   node_rad_R = 10
+#   endpt_L = 0
+#   endpt_R = 0
+#   # find where node ray intersects parents
+#   cur_node = node.parent
+#   while cur_node != nothing
+#     cur_split = [-cur_node.splitter_normal[2], cur_node.splitter_normal[1]]
+#     dx = cur_node.center[1]-node.center[1]
+#     dy = cur_node.center[2]-node.center[2]
+#     det = cur_split[1] * split[2] - cur_split[2] * split[1]
+#     u = (dy * cur_split[1] - dx * cur_split[2]) / det
+#     v = (dy * split[1] - dx * split[2]) / det
+#     if u > 0 && u < node_rad_R
+#       node_rad_R = u
+#     end
+#     if u < 0 && u > node_rad_L
+#       node_rad_L = u
+#     end
+#     cur_node = cur_node.parent
+#   end
+#   endpt_L = node.center + node_rad_L * split
+#   endpt_R = node.center + node_rad_R * split
+#   plot!([endpt_L[1],endpt_R[1]], [endpt_L[2],endpt_R[2]], width=3 , color="brown")
+# end
+#
+# leaf = t.allleaves[10]
+# leafrad = maximum([norm(pt-leaf.center) for pt in leaf.points])
+# # x(t) = cos(t)*leafrad + leaf.center[1]
+# # y(t) = sin(t)*leafrad + leaf.center[2]
+# # plot!(x, y, 0, 2pi, linewidth=4, color="black")
+# x2(t) = 1.5*cos(t)*leafrad + leaf.center[1]
+# y2(t) = 1.5*sin(t)*leafrad + leaf.center[2]
+# plot!(x2, y2, 0, 2pi, linewidth=4, color="black")
+# plot!( ylim=(-2,5), xlim=(-2,5), legend=false, ticks=false)
+# plot!(size = (700,400))
+# # plot!( ylim=(0,1), xlim=(0,1), legend=false, ticks=false)
+# savefig("domain.pdf")
+# end
