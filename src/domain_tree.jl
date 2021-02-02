@@ -160,7 +160,7 @@ function rec_split!(bt, node)
 end
 
 function heuristic_neighbor_scale(dimension::Int)
-    3 / sqrt(dimension)
+    max(1,3 / sqrt(dimension))
 end
 
 function initialize_tree(points, max_dofs_per_leaf, neighbor_scale::Real = heuristic_neighbor_scale(length(points[1])))
@@ -183,17 +183,27 @@ function initialize_tree(points, max_dofs_per_leaf, neighbor_scale::Real = heuri
   compute_near_far_nodes!(bt)
   # num_neighbors = sum([length(node.neighbors) for node in bt.allleaves])
   # println("Avg neighborhood: ", num_neighbors/length(bt.allleaves))
+  # tot_far = 0
+  # tot_leaf_points = 0
+  # for leaf in bt.allleaves
+  #   tot_leaf_points += length(leaf.points)
+  #   tot_far += length(leaf.far_nodes)
+  # end
+  # println("Num leaves ", length(bt.allleaves))
+  # println("Num nodes ", length(bt.allnodes))
+  # println("Avg far ", tot_far/length(bt.allleaves))
+  # println("Avg leaf_points ", tot_leaf_points/length(bt.allleaves))
   return bt
 end
-
-# N=8000
+#
+# N=2000
 # dimension = 2
 # max_dofs_per_leaf = 100
 # # points  = [randn(dimension) for i in 1:N]  #
 # points = [rand() > 0.5 ? randn(dimension) : 3*ones(dimension)+randn(dimension) for i in 1:N]
 # t = initialize_tree(points, max_dofs_per_leaf)
 #
-# scatter([pt[1] for pt in points], [pt[2] for pt in points], markersize = 2.2, color = "brown", markerstrokewidth=0)
+# scatter([pt[1] for pt in points], [pt[2] for pt in points], markersize = 2.2, color = "sky blue", markerstrokewidth=0)
 #
 # for node in t.allnodes
 #   if isleaf(node) continue end
@@ -222,7 +232,7 @@ end
 #   end
 #   endpt_L = node.center + node_rad_L * split
 #   endpt_R = node.center + node_rad_R * split
-#   plot!([endpt_L[1],endpt_R[1]], [endpt_L[2],endpt_R[2]], width=3 , color="purple")
+#   plot!([endpt_L[1],endpt_R[1]], [endpt_L[2],endpt_R[2]], width=3 , color="brown")
 # end
 #
 # leaf = t.allleaves[10]
@@ -234,7 +244,7 @@ end
 # y2(t) = 1.5*sin(t)*leafrad + leaf.center[2]
 # plot!(x2, y2, 0, 2pi, linewidth=4, color="black")
 # plot!( ylim=(-2,5), xlim=(-2,5), legend=false, ticks=false)
+# plot!(size = (700,400))
 # # plot!( ylim=(0,1), xlim=(0,1), legend=false, ticks=false)
-# gui()
-#
+# savefig("domain.pdf")
 # end

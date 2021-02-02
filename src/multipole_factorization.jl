@@ -56,6 +56,7 @@ function MultipoleFactorization(kernel, points::AbstractVector{<:AbstractVector{
     @timeit to "Populate normalizer table" normalizer_table = squared_hyper_normalizer_table(dimension, trunc_param)
     @timeit to "Initialize tree" tree = initialize_tree(points, max_dofs_per_leaf)
     get_F, get_G, radial_fun_ranks = init_F_G(kernel, dimension, trunc_param, Val(qrable(kernel)))
+
     fact = MultipoleFactorization(kernel, precond_param, trunc_param, to,
                                 multi_to_single, normalizer_table, tree, npoints,
                                 get_F, get_G, radial_fun_ranks)
@@ -129,6 +130,7 @@ function transformation_mats_kernel!(fact::MultipoleFactorization, leaf, timeit:
         leaf.near_mat = fact.kernel.(tgt_points, permutedims(src_points))
     end
     leaf.o2i = Vector{Matrix{Float64}}(undef, length(leaf.far_nodes))
+    tot_far_points = sum([length(far_node.points) for far_node in leaf.far_nodes])
     for far_node_idx in eachindex(leaf.far_nodes) # IDEA: parallelize?
         far_node = leaf.far_nodes[far_node_idx]
         if isempty(far_node.points) continue end
@@ -137,7 +139,6 @@ function transformation_mats_kernel!(fact::MultipoleFactorization, leaf, timeit:
         recentered_tgt = center.(tgt_points)
         recentered_src = center.(src_points)
         m = length(leaf.point_indices)
-        n = length(far_node.point_indices)
         if isempty(far_node.s2o)
 
             if timeit
@@ -145,8 +146,10 @@ function transformation_mats_kernel!(fact::MultipoleFactorization, leaf, timeit:
             else
                 far_node.s2o = source2outgoing(fact, recentered_src, timeit)
             end
+            println("S20 height ", size(far_node.s2o,1))
         end
-        if num_multipoles * (m + n) < m * n
+
+        if (num_multipoles * (m + tot_far_points)) < (m * tot_far_points)
             if timeit
                 @timeit fact.to "outgoing2incoming" leaf.o2i[far_node_idx] = outgoing2incoming(fact, recentered_tgt)
             else

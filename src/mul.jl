@@ -18,12 +18,14 @@ function mul!(y::AbstractVector, fact::MultipoleFactorization, x::AbstractVector
             xi = x[leaf.near_indices]
             yi = @view y[leaf.point_indices]
             mul!(yi, leaf.near_mat, xi, 1, 0) # near field interaction
+            tot_far_points = sum([length(far_node.points) for far_node in leaf.far_nodes])
+
             for far_node_idx in eachindex(leaf.far_nodes)
                 far_node = leaf.far_nodes[far_node_idx]
                 if isempty(far_node.points) continue end
                 m = length(leaf.point_indices)
                 n = length(far_node.point_indices)
-                if num_multipoles * (m + n) < m * n # true if fast multiply is more efficient
+                if (num_multipoles * (m + tot_far_points)) < (m * tot_far_points)
                     total_compressed +=1
                     if isempty(far_node.outgoing) # IDEA: have this pre-allocated in compute_transformation_mats
                         far_node.outgoing = far_node.s2o * x[far_node.point_indices]
