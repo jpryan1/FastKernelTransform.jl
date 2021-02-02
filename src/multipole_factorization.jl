@@ -8,10 +8,16 @@ mutable struct FmmMatrix{K, V<:AbstractVector{<:AbstractVector{<:Real}}} # IDEA:
     to::TimerOutput
 end
 
+
+function FmmMatrix(kernel, points, max_dofs_per_leaf, precond_param, trunc_param, to)
+    return FmmMatrix(kernel, points, points,max_dofs_per_leaf, precond_param, trunc_param, to)
+end
+
+
 # fast kernel transform
 function fkt(mat::FmmMatrix)
-    return MultipoleFactorization(mat.kernel, mat.tgt_points, mat.src_points,
-        mat.max_dofs_per_leaf, mat.precond_param, mat.trunc_param, mat.to)
+    return MultipoleFactorization(mat.kernel, mat.tgt_points,
+        mat.src_points, mat.max_dofs_per_leaf, mat.precond_param, mat.trunc_param, mat.to)
 end
 
 # factorize only calls fkt if it is worth it

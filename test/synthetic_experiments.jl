@@ -71,7 +71,7 @@ for k in eachindex(generators)
                 points = gen(n, d) # generate data set
 
                 # factor benchmark
-                K = FmmMatrix(kernel, points, points, max_dofs_per_leaf, precond_param, trunc_param, to)
+                K = FmmMatrix(kernel, points, max_dofs_per_leaf, precond_param, trunc_param, to)
                 bench = @benchmarkable fkt($K)
                 factor_times[exp_i, i, j, k] = minimum(run(bench, samples = 1)).time
 

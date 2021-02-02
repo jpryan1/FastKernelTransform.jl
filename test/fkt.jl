@@ -32,7 +32,7 @@ rtol = 1e-4
 # test driver
 function fkt_test(kernels, x, y, max_dofs_per_leaf, precond_param, trunc_param, to)
     for (i, k) in enumerate(kernels)
-        mat = FmmMatrix(k, x,x, max_dofs_per_leaf, precond_param, trunc_param, to)
+        mat = FmmMatrix(k, x, max_dofs_per_leaf, precond_param, trunc_param, to)
         fact = factorize(mat)
         kern_mat  = k.(x, permutedims(x))
         bbar = fact * y
@@ -52,7 +52,7 @@ end
         precond_param     = 128  # Size of diag blocks to inv for preconditioner
         trunc_param = 5
         x = data_generator(n, d)
-        mat = FmmMatrix(Exp(), x, x, max_dofs_per_leaf, precond_param, trunc_param, to)
+        mat = FmmMatrix(Exp(), x, max_dofs_per_leaf, precond_param, trunc_param, to)
         fact = factorize(mat)
         @test size(fact) == (n, n)
         @test size(fact, 1) == n
