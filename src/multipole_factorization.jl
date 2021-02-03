@@ -175,7 +175,7 @@ end
 
 # computational kernel of transformation mats that is run in parallel
 function transformation_mats_kernel!(fact::MultipoleFactorization, leaf, timeit::Bool = true)
-    num_multipoles = binomial(fact.trunc_param+fact.tree.dimension, fact.trunc_param)
+    num_multipoles = length(keys(fact.multi_to_single))
 
     tgt_points = leaf.tgt_points
     src_points = leaf.src_points

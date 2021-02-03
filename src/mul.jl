@@ -9,7 +9,7 @@ end
 # IDEA: could pass data structure that reports how many compressions took place
 function mul!(y::AbstractVector, fact::MultipoleFactorization, x::AbstractVector, α::Real = 1, β::Real = 0; verbose::Bool = false)
     _checksizes(y, fact, x)
-    num_multipoles = binomial(fact.trunc_param + fact.tree.dimension, fact.trunc_param)
+    num_multipoles = length(keys(fact.multi_to_single))
     total_compressed = 0
     total_not_compressed = 0
     @sync for leaf in fact.tree.allleaves
