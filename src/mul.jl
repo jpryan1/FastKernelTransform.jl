@@ -18,8 +18,7 @@ function mul!(y::AbstractVector, fact::MultipoleFactorization, x::AbstractVector
             xi = x[leaf.near_indices]
             yi = @view y[leaf.tgt_point_indices]
             mul!(yi, leaf.near_mat, xi, α, β) # near field interaction
-            tot_far_points = sum([length(far_node.src_points) for far_node in leaf.far_nodes])
-
+            tot_far_points = get_tot_far_points(leaf)
             for far_node_idx in eachindex(leaf.far_nodes)
                 far_node = leaf.far_nodes[far_node_idx]
                 if isempty(far_node.src_points) continue end

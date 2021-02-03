@@ -51,6 +51,10 @@ function BallNode(isprecond, dimension, ctr, tgt_points, tgt_point_indices, src_
            near_mat, diag_block, s2o, o2i, nothing, nothing, nothing, ctr, nothing)
 end
 
+# calculates the total number of far points for a given leaf
+function get_tot_far_points(leaf::BallNode)
+    isempty(leaf.far_nodes) ? 0 : sum(node->length(node.src_points), leaf.far_nodes)
+end
 
 struct Tree{T<:Real, R<:BallNode, V<:AbstractVector{<:BallNode}}
     dimension::Int64

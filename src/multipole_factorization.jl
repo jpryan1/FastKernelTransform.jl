@@ -197,7 +197,7 @@ function transformation_mats_kernel!(fact::MultipoleFactorization, leaf, timeit:
     end
 
     leaf.o2i = Vector{Matrix{Float64}}(undef, length(leaf.far_nodes))
-    tot_far_points = isempty(leaf.far_nodes) ? 0 : sum(node->length(node.src_points), leaf.far_nodes)
+    tot_far_points = get_tot_far_points(leaf)
     for far_node_idx in eachindex(leaf.far_nodes) # IDEA: parallelize?
         far_node = leaf.far_nodes[far_node_idx]
         if isempty(far_node.src_points) continue end
