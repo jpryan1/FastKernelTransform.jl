@@ -1,4 +1,4 @@
-mutable struct FmmMatrix{K, V<:AbstractVector{<:AbstractVector{<:Real}}} # IDEA: use CovarianceFunctions.Gramian
+mutable struct FmmMatrix{K, V<:AbstractVector{<:AbstractVector{<:Real}}, VT} # IDEA: use CovarianceFunctions.Gramian
     kernel::K
     tgt_points::V
     src_points::V
@@ -6,18 +6,30 @@ mutable struct FmmMatrix{K, V<:AbstractVector{<:AbstractVector{<:Real}}} # IDEA:
     precond_param::Int64
     trunc_param::Int64
     to::TimerOutput
+    variance::VT
 end
 
 
-function FmmMatrix(kernel, points, max_dofs_per_leaf, precond_param, trunc_param, to::TimerOutput = TimerOutput())
-    return FmmMatrix(kernel, points, points,max_dofs_per_leaf, precond_param, trunc_param, to)
+function FmmMatrix(kernel, tgt_points::AbstractVector{<:AbstractVector{<:Real}},
+                   src_points::AbstractVector{<:AbstractVector{<:Real}},
+                   max_dofs_per_leaf::Int, precond_param::Int, trunc_param::Int,
+                   to::TimerOutput = TimerOutput())
+    variance = nothing
+    return FmmMatrix(kernel, tgt_points, src_points, max_dofs_per_leaf, precond_param,
+                     trunc_param, to, variance)
 end
 
+function FmmMatrix(kernel, points::AbstractVector{<:AbstractVector{<:Real}},
+                   max_dofs_per_leaf::Int, precond_param::Int, trunc_param::Int,
+                   to::TimerOutput = TimerOutput(), variance = nothing)
+    return FmmMatrix(kernel, points, points, max_dofs_per_leaf, precond_param,
+                     trunc_param, to, variance)
+end
 
 # fast kernel transform
 function fkt(mat::FmmMatrix)
-    return MultipoleFactorization(mat.kernel, mat.tgt_points,
-        mat.src_points, mat.max_dofs_per_leaf, mat.precond_param, mat.trunc_param, mat.to)
+    return MultipoleFactorization(mat.kernel, mat.tgt_points, mat.src_points,
+        mat.max_dofs_per_leaf, mat.precond_param, mat.trunc_param, mat.to, mat.variance)
 end
 
 # factorize only calls fkt if it is worth it
@@ -33,9 +45,8 @@ end
 # multi_to_single: helper array, converting from (k, h, i) representation of
 # multipole coefficients to single indices into an array (for efficient
 # matrix vector products)
-struct MultipoleFactorization{K, TO<:TimerOutput, MST, NT, TT<:Tree, FT, GT, RT<:AbstractVector{Int}}
+struct MultipoleFactorization{K, TO<:TimerOutput, MST, NT, TT<:Tree, FT, GT, RT<:AbstractVector{Int}, VT}
     kernel::K
-    precond_param::Int64
     trunc_param::Int64
     to::TO
 
@@ -48,15 +59,28 @@ struct MultipoleFactorization{K, TO<:TimerOutput, MST, NT, TT<:Tree, FT, GT, RT<
     get_F::FT
     get_G::GT
     radial_fun_ranks::RT
+
+    variance::VT # additive diagonal correction
+    symmetric::Bool
+end
+LinearAlgebra.issymmetric(F::MultipoleFactorization) = F.symmetric
+
+# if only target points are passed, convert to src_points
+function MultipoleFactorization(kernel, tgt_points::AbstractVector{<:AbstractVector{<:Real}},
+                                max_dofs_per_leaf::Int, precond_param::Int, trunc_param::Int,
+                                to::TimerOutput = TimerOutput(), variance = nothing)
+    MultipoleFactorization(kernel, tgt_points, tgt_points, max_dofs_per_leaf,
+                           precond_param, trunc_param, to, variance)
 end
 
 function MultipoleFactorization(kernel, tgt_points::AbstractVector{<:AbstractVector{<:Real}},
                                 src_points::AbstractVector{<:AbstractVector{<:Real}},
-                                max_dofs_per_leaf::Int, precond_param::Int, trunc_param::Int, to::TimerOutput = TimerOutput())
+                                max_dofs_per_leaf::Int, precond_param::Int, trunc_param::Int,
+                                to::TimerOutput = TimerOutput(), variance = nothing)
     dimension = length(tgt_points[1])
     @timeit to "computing F and G" get_F, get_G, radial_fun_ranks = init_F_G(kernel, dimension, trunc_param, Val(qrable(kernel)))
     MultipoleFactorization(kernel, tgt_points, src_points, max_dofs_per_leaf, precond_param,
-                           trunc_param, get_F, get_G, radial_fun_ranks, to)
+                           trunc_param, get_F, get_G, radial_fun_ranks, to, variance)
 end
 
 # takes arbitrary isotropic kernel
@@ -66,8 +90,8 @@ function MultipoleFactorization(kernel, tgt_points::AbstractVector{<:AbstractVec
                                 src_points::AbstractVector{<:AbstractVector{<:Real}},
                                 max_dofs_per_leaf::Int, precond_param::Int,
                                 trunc_param::Int, get_F, get_G, radial_fun_ranks::AbstractVector,
-                                to::TimerOutput = TimerOutput())
-    max_dofs_per_leaf < precond_param || throw(DomainError("max_dofs_per_leaf < precond_param"))
+                                to::TimerOutput = TimerOutput(), variance = nothing)
+    max_dofs_per_leaf ≤ precond_param || throw(DomainError("max_dofs_per_leaf < precond_param"))
     n_tgt_points = length(tgt_points)
     n_src_points = length(src_points)
     dimension = length(tgt_points[1])
@@ -75,13 +99,14 @@ function MultipoleFactorization(kernel, tgt_points::AbstractVector{<:AbstractVec
     @timeit to "Populate normalizer table" normalizer_table = squared_hyper_normalizer_table(dimension, trunc_param)
     @timeit to "Initialize tree" tree = initialize_tree(tgt_points, src_points, max_dofs_per_leaf)
 
-    fact = MultipoleFactorization(kernel, precond_param, trunc_param, to,
+    symmetric = tgt_points === src_points
+    fact = MultipoleFactorization(kernel, trunc_param, to,
                                 multi_to_single, normalizer_table, tree, n_tgt_points, n_src_points,
-                                get_F, get_G, radial_fun_ranks)
+                                get_F, get_G, radial_fun_ranks, variance, symmetric)
     fill_index_mapping_tables!(fact)
     @timeit fact.to "Populate transformation table" compute_transformation_mats!(fact)
     if tgt_points === src_points && precond_param > 0
-        @timeit fact.to "Get diag inv for precond" compute_preconditioner!(fact)
+        @timeit fact.to "Get diag inv for precond" compute_preconditioner!(fact, precond_param, variance)
     end
     return fact
 end
@@ -105,22 +130,37 @@ function fill_index_mapping_tables!(fact::MultipoleFactorization)
 end
 
 # For preconditioner
-function compute_preconditioner!(fact::MultipoleFactorization)
-     node_queue = [fact.tree.root]
-     while !isempty(node_queue) # IDEA: parallelize
-         node = pop!(node_queue)
-         if length(node.tgt_point_indices) < fact.precond_param
-             tgt_points = node.tgt_points
-             # IDEA: can the kernel matrix be extracted from node.near_mat?
-             K = fact.kernel.(tgt_points, permutedims(tgt_points))
-             node.diag_block = cholesky!(K, Val(true), tol = 1e-6, check = false) # in-place
-         else
-             push!(node_queue, node.left_child)
-             push!(node_queue, node.right_child)
-         end
-     end
-     return fact
+function compute_preconditioner!(fact::MultipoleFactorization, precond_param::Int,
+                                 variance::Union{AbstractVector, Nothing} = fact.variance)
+    node_queue = [fact.tree.root]
+    @sync while !isempty(node_queue) # IDEA: parallelize
+        node = pop!(node_queue)
+        if length(node.tgt_point_indices) ≤ precond_param
+            @spawn begin
+                tgt_points = node.tgt_points
+                K = fact.kernel.(tgt_points, permutedims(tgt_points)) # IDEA: can the kernel matrix be extracted from node.near_mat?
+                diagonal_correction!(K, variance, node.tgt_point_indices)
+                node.diag_block = cholesky!(K, Val(true), tol = 1e-7, check = false) # in-place
+            end
+        else
+            push!(node_queue, node.left_child)
+            push!(node_queue, node.right_child)
+        end
+    end
+    return fact
  end
+
+using LinearAlgebra: checksquare
+
+diagonal_correction!(K::AbstractMatrix, variance::Nothing, indices) = nothing
+function diagonal_correction!(K::AbstractMatrix, variance::AbstractVector, indices)
+    (checksquare(K) == length(indices)) || throw(DimensionMismatch("checksquare(K) = $(checksquare(K)) ≠ $(length(indices)) = length(indices)"))
+    var_ind = @view variance[indices]
+    for (i, di) in enumerate(diagind(K))
+         K[di] += var_ind[i]
+     end
+     return K
+end
 
 function compute_transformation_mats!(fact::MultipoleFactorization)
     @timeit fact.to "parallel transformation_mats" begin
@@ -140,7 +180,7 @@ function transformation_mats_kernel!(fact::MultipoleFactorization, leaf, timeit:
     tgt_points = leaf.tgt_points
     src_points = leaf.src_points
     src_points = vcat(src_points, [neighbor.src_points for neighbor in leaf.neighbors]...)
-    src_indices = copy(leaf.src_point_indices)
+    src_indices = leaf.src_point_indices
     src_indices = vcat(src_indices, [neighbor.src_point_indices for neighbor in leaf.neighbors]...)
     leaf.near_indices = src_indices
 
@@ -148,6 +188,12 @@ function transformation_mats_kernel!(fact::MultipoleFactorization, leaf, timeit:
         @timeit fact.to "get near mat" leaf.near_mat = fact.kernel.(tgt_points, permutedims(src_points))
     else
         leaf.near_mat = fact.kernel.(tgt_points, permutedims(src_points)) # IDEA: make lazy if they are too large?
+    end
+
+    if issymmetric(fact) # if target and source are equal,
+        ind = 1:size(leaf.near_mat, 1) # square submatrix needs diagonal correction (self interactions)
+        A = @view leaf.near_mat[ind, ind]
+        diagonal_correction!(A, fact.variance, leaf.tgt_point_indices)
     end
 
     leaf.o2i = Vector{Matrix{Float64}}(undef, length(leaf.far_nodes))

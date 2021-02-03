@@ -200,7 +200,7 @@ function initialize_tree(tgt_points, src_points, max_dofs_per_leaf,
   allnodes = [root]
   allleaves = fill(root, 0)
   bt = Tree(dimension, root, max_dofs_per_leaf, allnodes, allleaves, neighbor_scale)
-  if (length(tgt_points)+length(src_points)) > max_dofs_per_leaf
+  if (length(tgt_points) + length(src_points)) > max_dofs_per_leaf
     rec_split!(bt, root)
   end
 

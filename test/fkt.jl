@@ -22,7 +22,6 @@ data_generator(n, d) = two_bump_data(n, d, σ)
 es(r) = r == 0 ? typeof(r)(1e3) : inv(r)
 es(x, y) = es(norm(difference(x, y)))
 eq = Lengthscale(EQ(), 1/sqrt(2)) # with short lengthscale, not as accurate?
-# ek(r) = iszero(r) ? exp(-r) + 1. : exp(-r)
 ek(r) = exp(-10r)
 ek(x, y) = ek(norm(difference(x, y)))
 
@@ -31,18 +30,87 @@ FastKernelTransform.get_correction(::typeof(ek)) = ek
 
 atol = 1e-4
 rtol = 1e-4
+verbose = true
 # test driver
-function fkt_test(kernels, x, y, max_dofs_per_leaf, precond_param, trunc_param, to)
+function fkt_test(kernels, x, y, max_dofs_per_leaf, precond_param, trunc_param,
+                  to, names = nothing; verbose::Bool = true)
     for (i, k) in enumerate(kernels)
+        verbose && println(names[i])
         mat = FmmMatrix(k, x, max_dofs_per_leaf, precond_param, trunc_param, to)
         fact = factorize(mat)
         kern_mat  = k.(x, permutedims(x))
-        bbar = *(fact, y, verbose = true)
+        bbar = *(fact, y, verbose = verbose)
         b = kern_mat * y
-        println("relative error = $(norm(b-bbar)/norm(b))")
-        if norm(b-bbar)/norm(b) < 1e-10
-            println("Warning: far-field probably not called")
-        end
+        verbose && println("relative error = $(norm(b-bbar)/norm(b))")
+        @test isapprox(b, bbar, rtol = rtol, atol = atol)
+    end
+end
+
+@testset "factorize and mul!" begin
+    @testset "basic properties" begin
+        n, d = 1024, 2
+        max_dofs_per_leaf = 256 # When to stop in tree decomposition
+        precond_param     = 256  # Size of diag blocks to inv for preconditioner
+        trunc_param = 5
+        x = data_generator(n, d)
+        variance = exp.(randn(n)) # additive diagonal
+        k = Exp()
+        mat = FmmMatrix(k, x, max_dofs_per_leaf, precond_param, trunc_param, to, variance)
+        fact = factorize(mat)
+        @test size(fact) == (n, n)
+        @test size(fact, 1) == n
+        @test size(fact, 2) == n
+        @test size(fact, 3) == 1
+        y = randn(n)
+        b = *(fact, y, verbose = true)
+        @test eltype(b) <: Real
+        # checking diagonal matrix was incorporated
+        K = gramian(k, x)
+        c = K * y
+        @. c += variance * y
+        @test isapprox(b, c, rtol = 1e-5)
+    end
+
+    @testset "2d" begin
+        n, d = 4096, 2
+        max_dofs_per_leaf = 512 # When to stop in tree decomposition
+        precond_param     = 1024  # Size of diag blocks to inv for preconditioner
+        trunc_param = 5
+        x = data_generator(n, d)
+        y = rand(n) # Start with random data values at each point
+        kernels = (ek, Cauchy())
+        names = ("Exp", "Cauchy")
+        fkt_test(kernels, x, y, max_dofs_per_leaf, precond_param, trunc_param, to, names)
+    end
+
+    @testset "3d" begin
+        n, d = 4096, 3
+        max_dofs_per_leaf = 512  # When to stop in tree decomposition
+        precond_param     = 1024  # Size of diag blocks to inv for preconditioner
+        trunc_param = 5
+        x = data_generator(n, d)
+        y = rand(n) # Start with random data values at each point
+        kernels = (eq, ek, Cauchy()) # (es, eq, ek, Cauchy())
+        names = ("EQ", "Exp", "Cauchy") # ["Electro", "EQ", "Exp", "Cauchy"]
+        fkt_test(kernels, x, y, max_dofs_per_leaf, precond_param, trunc_param, to, names)
+    end
+
+    @testset "rectangle" begin
+        n, d = 4096, 3
+        max_dofs_per_leaf = 512  # When to stop in tree decomposition
+        precond_param     = 1024  # Size of diag blocks to inv for preconditioner
+        trunc_param = 5
+        x1 = data_generator(n, d)
+        x2 = data_generator(n+4, d)
+        y = rand(n+4) # Start with random data values at each point
+        kernels = (eq, ek, Cauchy()) # (es, eq, ek, Cauchy())
+        names = ("EQ", "Exp", "Cauchy") # ["Electro", "EQ", "Exp", "Cauchy"]
+        mat = FmmMatrix(ek, x1, x2, max_dofs_per_leaf, precond_param, trunc_param, to)
+        fact = factorize(mat)
+        kern_mat  = ek.(x1, permutedims(x2))
+        bbar = *(fact, y, verbose = verbose)
+        b = kern_mat * y
+        verbose && println("relative error = $(norm(b-bbar)/norm(b))")
         @test isapprox(b, bbar, rtol = rtol, atol = atol)
     end
 end
@@ -57,8 +125,8 @@ using FastKernelTransform: conj_grad
     y = rand(n) # Start with random data values at each point
     k = ek
     names = "Exp"
-    # println("cond = ", cond(k.(x, permutedims(x))))
-    mat = FmmMatrix(k, x, max_dofs_per_leaf, precond_param, trunc_param, to)
+    variance = fill(1e-4, n)
+    mat = FmmMatrix(k, x, max_dofs_per_leaf, precond_param, trunc_param, to, variance)
     fact = factorize(mat)
     b = fact * y
     rtol = 1e-3
@@ -68,71 +136,6 @@ using FastKernelTransform: conj_grad
     # println(norm(y_cg-y)/norm(y))
     # println(norm(b_cg-b)/norm(b))
     @test isapprox(b, b_cg, rtol = rtol)
-end
-
-
-@testset "factorize and mul!" begin
-    @testset "basic properties" begin
-        n, d = 1024, 2
-        max_dofs_per_leaf = 64 # When to stop in tree decomposition
-        precond_param     = 128  # Size of diag blocks to inv for preconditioner
-        trunc_param = 5
-        x = data_generator(n, d)
-        mat = FmmMatrix(Exp(), x, max_dofs_per_leaf, precond_param, trunc_param, to)
-        fact = factorize(mat)
-        @test size(fact) == (n, n)
-        @test size(fact, 1) == n
-        @test size(fact, 2) == n
-        @test size(fact, 3) == 1
-        y = randn(n)
-        @test eltype(fact * y) <: Real
-    end
-
-    @testset "2d" begin
-        n, d = 4096, 2
-        max_dofs_per_leaf = 512 # When to stop in tree decomposition
-        precond_param     = 1024  # Size of diag blocks to inv for preconditioner
-        trunc_param = 5
-        x = data_generator(n, d)
-        y = rand(n) # Start with random data values at each point
-        kernels = (ek, Cauchy())
-        names = ("Exp", "Cauchy")
-        fkt_test(kernels, x, y, max_dofs_per_leaf, precond_param, trunc_param, to)
-    end
-
-    @testset "3d" begin
-        n, d = 4096, 3
-        max_dofs_per_leaf = 256  # When to stop in tree decomposition
-        precond_param     = 512  # Size of diag blocks to inv for preconditioner
-        trunc_param = 5
-        x = data_generator(n, d)
-        y = rand(n) # Start with random data values at each point
-        kernels = (eq, ek, Cauchy()) # (es, eq, ek, Cauchy())
-        names = ("EQ", "Exp", "Cauchy") # ["Electro", "EQ", "Exp", "Cauchy"]
-        fkt_test(kernels, x, y, max_dofs_per_leaf, precond_param, trunc_param, to)
-    end
-
-    @testset "rectangle" begin
-        n, d = 4096, 3
-        max_dofs_per_leaf = 256  # When to stop in tree decomposition
-        precond_param     = 512  # Size of diag blocks to inv for preconditioner
-        trunc_param = 5
-        x1 = data_generator(n, d)
-        x2 = data_generator(n+4, d)
-        y = rand(n+4) # Start with random data values at each point
-        kernels = (eq, ek, Cauchy()) # (es, eq, ek, Cauchy())
-        names = ("EQ", "Exp", "Cauchy") # ["Electro", "EQ", "Exp", "Cauchy"]
-        mat = FmmMatrix(ek, x1, x2, max_dofs_per_leaf, precond_param, trunc_param, to)
-        fact = factorize(mat)
-        kern_mat  = ek.(x1, permutedims(x2))
-        bbar = fact * y
-        b = kern_mat * y
-        println("relative error = $(norm(b-bbar)/norm(b))")
-        if norm(b-bbar)/norm(b) < 1e-10
-            println("Warning: far-field probably not called")
-        end
-        @test isapprox(b, bbar, rtol = rtol, atol = atol)
-    end
 end
 
 end # TestFastKernelTransform
