@@ -6,12 +6,23 @@ function *(fact::MultipoleFactorization, x::AbstractVector; verbose::Bool = fals
 end
 \(fact::MultipoleFactorization, b::AbstractVector) = conj_grad(fact, b)
 
+
 # IDEA: could pass data structure that reports how many compressions took place
 function mul!(y::AbstractVector, fact::MultipoleFactorization, x::AbstractVector, α::Real = 1, β::Real = 0; verbose::Bool = false)
     _checksizes(y, fact, x)
     num_multipoles = length(keys(fact.multi_to_single))
     total_compressed = 0
     total_not_compressed = 0
+
+    @sync for node in fact.tree.allnodes # computes all multipoles
+        @spawn begin
+            if !isempty(node.s2o)
+                x_far_src = @view x[node.src_point_indices]
+                mul!(node.outgoing, node.s2o, x_far_src)
+            end
+        end
+    end
+
     @sync for leaf in fact.tree.allleaves
         if isempty(leaf.tgt_points) continue end
         @spawn begin
@@ -25,17 +36,10 @@ function mul!(y::AbstractVector, fact::MultipoleFactorization, x::AbstractVector
                 m = length(leaf.tgt_points)
                 if (num_multipoles * (m + tot_far_points)) < (m * tot_far_points)
                     total_compressed += 1
-                    if !far_node.outgoing_is_fresh
-                        # println(length(far_node.outgoing))
-                        x_far_src = @view x[far_node.src_point_indices]
-                        far_node.outgoing = far_node.s2o * x_far_src
-                        # mul!(far_node.outgoing, far_node.s2o, x_far_src) # this causes parallelism problems
-                        far_node.outgoing_is_fresh = true
-                    end
                     xi = far_node.outgoing
                 else
                     total_not_compressed += 1
-                    xi = x[far_node.src_point_indices]
+                    xi = @view x[far_node.src_point_indices]
                 end
                 o2i = leaf.o2i[far_node_idx]
                 multiply_helper!(yi, o2i, xi, α)
@@ -43,9 +47,6 @@ function mul!(y::AbstractVector, fact::MultipoleFactorization, x::AbstractVector
         end
     end
     verbose && println("Compressed: ",total_compressed," not compressed: ", total_not_compressed)
-    for cell in fact.tree.allnodes # parallel?
-        cell.outgoing_is_fresh = false
-    end
     return y
 end
 

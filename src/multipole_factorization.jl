@@ -201,19 +201,18 @@ function transformation_mats_kernel!(fact::MultipoleFactorization, leaf, timeit:
         far_node = leaf.far_nodes[far_node_idx]
         if isempty(far_node.src_points) continue end
         src_points = far_node.src_points
-        center(x) = x - far_node.center
-        recentered_tgt = center.(tgt_points)
-        recentered_src = center.(src_points)
         m = length(leaf.tgt_point_indices)
-        if isempty(far_node.s2o)
-            if timeit
-                @timeit fact.to "source2outgoing" far_node.s2o = source2outgoing(fact, recentered_src)
-            else
-                far_node.s2o = source2outgoing(fact, recentered_src, timeit)
-            end
-        end
-
         if (num_multipoles * (m + tot_far_points)) < (m * tot_far_points)
+            center(x) = x - far_node.center
+            recentered_tgt = center.(tgt_points)
+            recentered_src = center.(src_points)
+            if isempty(far_node.s2o)
+                if timeit
+                    @timeit fact.to "source2outgoing" far_node.s2o = source2outgoing(fact, recentered_src)
+                else
+                    far_node.s2o = source2outgoing(fact, recentered_src, timeit)
+                end
+            end
             if timeit
                 @timeit fact.to "outgoing2incoming" leaf.o2i[far_node_idx] = outgoing2incoming(fact, recentered_tgt)
             else
