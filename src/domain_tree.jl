@@ -12,29 +12,27 @@ mutable struct BallNode{PT<:AbstractVector{<:AbstractVector{<:Real}},
                       ST<:AbstractMatrix{<:Number},
                       OIT<:AbstractVector{<:AbstractMatrix{<:Number}},
                       CT}
-  is_precond_node::Bool  # is Node whose diag block is inv'd for precond TODO may be unnecessary
-  dimension::Int
-  tgt_points::PT # how to keep this type general? (i.e. subarray) + 1d?
-  tgt_point_indices::PIT
-  near_indices::PIT
-  src_points::PT
-  src_point_indices::PIT
-  neighbors::NT
-  far_nodes::NT
-  outgoing::OT  # This is an array of multipole coefficients, created at matvec time
+    is_precond_node::Bool  # is Node whose diag block is inv'd for precond TODO may be unnecessary
+    dimension::Int
+    tgt_points::PT # how to keep this type general? (i.e. subarray) + 1d?
+    tgt_point_indices::PIT
+    near_indices::PIT
+    src_points::PT
+    src_point_indices::PIT
+    neighbors::NT
+    far_nodes::NT
+    outgoing::OT  # This is an array of multipole coefficients, created at matvec time
 
-  near_mat::MT
-  diag_block::DT
-  # Below are source2outgoing and outgoing2incoming mats, created at factor time
-  s2o::ST
-  o2i::OIT
-  left_child # can be BallNode or Nothing
-  right_child # can be BallNode or Nothing
-  parent # can be BallNode or Nothing
-  center::CT
-  splitter_normal # nothing if leaf
-
-  outgoing_is_fresh::Bool
+    near_mat::MT
+    diag_block::DT
+    # Below are source2outgoing and outgoing2incoming mats, created at factor time
+    s2o::ST
+    o2i::OIT
+    left_child # can be BallNode or Nothing
+    right_child # can be BallNode or Nothing
+    parent # can be BallNode or Nothing
+    center::CT
+    splitter_normal # nothing if leaf
 end
 
 # constructor convenience
@@ -51,11 +49,9 @@ function BallNode(isprecond::Bool, dimension::Int, ctr::AbstractVector{<:Real},
   diag_block = cholesky(zeros(0, 0), Val(true), check = false) # TODO this forces the DT type in NodeData to be a Cholesky, should it?
   s2o = zeros(Complex{Float64}, 0, 0)
   o2i = fill(s2o, 0)
-  outgoing_is_fresh = false
   BallNode(isprecond, dimension, tgt_points, tgt_point_indices,
            near_indices, src_points, src_point_indices, neighbors, far_nodes, outgoing,
-           near_mat, diag_block, s2o, o2i, nothing, nothing, nothing, ctr, nothing,
-           outgoing_is_fresh)
+           near_mat, diag_block, s2o, o2i, nothing, nothing, nothing, ctr, nothing)
 end
 
 # calculates the total number of far points for a given leaf
