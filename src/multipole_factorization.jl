@@ -10,8 +10,7 @@ mutable struct FmmMatrix{K, V<:AbstractVector{<:AbstractVector{<:Real}}, VT} # I
 end
 
 
-function FmmMatrix(kernel, tgt_points::AbstractVector{<:AbstractVector{<:Real}},
-                   src_points::AbstractVector{<:AbstractVector{<:Real}},
+function FmmMatrix(kernel, tgt_points::VecOfVec{<:Real}, src_points::VecOfVec{<:Real},
                    max_dofs_per_leaf::Int, precond_param::Int, trunc_param::Int,
                    to::TimerOutput = TimerOutput())
     variance = nothing
@@ -19,7 +18,7 @@ function FmmMatrix(kernel, tgt_points::AbstractVector{<:AbstractVector{<:Real}},
                      trunc_param, to, variance)
 end
 
-function FmmMatrix(kernel, points::AbstractVector{<:AbstractVector{<:Real}},
+function FmmMatrix(kernel, points::VecOfVec{<:Real},
                    max_dofs_per_leaf::Int, precond_param::Int, trunc_param::Int,
                    to::TimerOutput = TimerOutput(), variance = nothing)
     return FmmMatrix(kernel, points, points, max_dofs_per_leaf, precond_param,
@@ -66,15 +65,14 @@ end
 LinearAlgebra.issymmetric(F::MultipoleFactorization) = F.symmetric
 
 # if only target points are passed, convert to src_points
-function MultipoleFactorization(kernel, tgt_points::AbstractVector{<:AbstractVector{<:Real}},
+function MultipoleFactorization(kernel, tgt_points::VecOfVec{<:Real},
                                 max_dofs_per_leaf::Int, precond_param::Int, trunc_param::Int,
                                 to::TimerOutput = TimerOutput(), variance = nothing)
     MultipoleFactorization(kernel, tgt_points, tgt_points, max_dofs_per_leaf,
                            precond_param, trunc_param, to, variance)
 end
 
-function MultipoleFactorization(kernel, tgt_points::AbstractVector{<:AbstractVector{<:Real}},
-                                src_points::AbstractVector{<:AbstractVector{<:Real}},
+function MultipoleFactorization(kernel, tgt_points::VecOfVec{<:Real}, src_points::VecOfVec{<:Real},
                                 max_dofs_per_leaf::Int, precond_param::Int, trunc_param::Int,
                                 to::TimerOutput = TimerOutput(), variance = nothing)
     dimension = length(tgt_points[1])
@@ -86,8 +84,7 @@ end
 # takes arbitrary isotropic kernel
 # IDEA: convert points to vector of static arrays, dispatch 2d (and 1d) implementation on its type!
 # IDEA: given radial_fun_ranks, can we get rid of trunc_param?
-function MultipoleFactorization(kernel, tgt_points::AbstractVector{<:AbstractVector{<:Real}},
-                                src_points::AbstractVector{<:AbstractVector{<:Real}},
+function MultipoleFactorization(kernel, tgt_points::VecOfVec{<:Real}, src_points::VecOfVec{<:Real},
                                 max_dofs_per_leaf::Int, precond_param::Int,
                                 trunc_param::Int, get_F, get_G, radial_fun_ranks::AbstractVector,
                                 to::TimerOutput = TimerOutput(), variance = nothing)
@@ -95,15 +92,15 @@ function MultipoleFactorization(kernel, tgt_points::AbstractVector{<:AbstractVec
     n_tgt_points = length(tgt_points)
     n_src_points = length(src_points)
     dimension = length(tgt_points[1])
-    multi_to_single = Dict() # TODO this doesn't need to be a dict anymore
+    multi_to_single = get_index_mapping_table(dimension, trunc_param, radial_fun_ranks)
     @timeit to "Populate normalizer table" normalizer_table = squared_hyper_normalizer_table(dimension, trunc_param)
-    @timeit to "Initialize tree" tree = initialize_tree(tgt_points, src_points, max_dofs_per_leaf)
+    outgoing_length = length(keys(multi_to_single))
+    @timeit to "Initialize tree" tree = initialize_tree(tgt_points, src_points, max_dofs_per_leaf, outgoing_length)
 
     symmetric = tgt_points === src_points
     fact = MultipoleFactorization(kernel, trunc_param, to,
                                 multi_to_single, normalizer_table, tree, n_tgt_points, n_src_points,
                                 get_F, get_G, radial_fun_ranks, variance, symmetric)
-    fill_index_mapping_tables!(fact)
     @timeit fact.to "Populate transformation table" compute_transformation_mats!(fact)
     if tgt_points === src_points && precond_param > 0
         @timeit fact.to "Get diag inv for precond" compute_preconditioner!(fact, precond_param, variance)
@@ -114,19 +111,21 @@ end
 Base.size(F::MultipoleFactorization) = (F.n_tgt_points, F.n_src_points)
 Base.size(F::MultipoleFactorization, i::Int) = i > 2 ? 1 : (i==1 ? F.n_tgt_points : F.n_src_points)
 
-function fill_index_mapping_tables!(fact::MultipoleFactorization)
+function get_index_mapping_table(dimension::Int, trunc_param::Int, radial_fun_ranks::AbstractVector{Int})
     counter = 0
-    for k in 0:fact.trunc_param
-        multiindices = get_multiindices(fact.tree.dimension, k)
-        r = fact.radial_fun_ranks[k+1]
+    multi_to_single = Dict() # TODO: types or array
+    for k in 0:trunc_param
+        multiindices = get_multiindices(dimension, k)
+        r = radial_fun_ranks[k+1]
         max_i = k+2*(r-1)
         for i in k:2:max_i
             for h in multiindices
                 counter += 1
-                fact.multi_to_single[(k, h, i)] = counter
+                multi_to_single[(k, h, i)] = counter
             end
         end
     end
+    return multi_to_single
 end
 
 # For preconditioner

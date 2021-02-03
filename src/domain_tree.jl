@@ -22,6 +22,7 @@ mutable struct BallNode{PT<:AbstractVector{<:AbstractVector{<:Real}},
   neighbors::NT
   far_nodes::NT
   outgoing::OT  # This is an array of multipole coefficients, created at matvec time
+
   near_mat::MT
   diag_block::DT
   # Below are source2outgoing and outgoing2incoming mats, created at factor time
@@ -32,23 +33,29 @@ mutable struct BallNode{PT<:AbstractVector{<:AbstractVector{<:Real}},
   parent # can be BallNode or Nothing
   center::CT
   splitter_normal # nothing if leaf
+
+  outgoing_is_fresh::Bool
 end
 
-
 # constructor convenience
-function BallNode(isprecond, dimension, ctr, tgt_points, tgt_point_indices, src_points, src_point_indices)
+function BallNode(isprecond::Bool, dimension::Int, ctr::AbstractVector{<:Real},
+                  tgt_points::VecOfVec{<:Real}, tgt_point_indices::AbstractVector{<:Int},
+                  src_points::VecOfVec{<:Real}, src_point_indices::AbstractVector{<:Int},
+                  outgoing_length::Int)
   near_indices = zeros(Int, 0)
   neighbors = Vector(undef, 0)
   far_nodes = Vector(undef, 0)
-  outgoing = zeros(Complex{Float64}, 0)
+  T = eltype(tgt_points[1])
+  outgoing = zeros(Complex{T}, outgoing_length)
   near_mat = zeros(0, 0)
   diag_block = cholesky(zeros(0, 0), Val(true), check = false) # TODO this forces the DT type in NodeData to be a Cholesky, should it?
   s2o = zeros(Complex{Float64}, 0, 0)
   o2i = fill(s2o, 0)
-
+  outgoing_is_fresh = false
   BallNode(isprecond, dimension, tgt_points, tgt_point_indices,
            near_indices, src_points, src_point_indices, neighbors, far_nodes, outgoing,
-           near_mat, diag_block, s2o, o2i, nothing, nothing, nothing, ctr, nothing)
+           near_mat, diag_block, s2o, o2i, nothing, nothing, nothing, ctr, nothing,
+           outgoing_is_fresh)
 end
 
 # calculates the total number of far points for a given leaf
@@ -173,8 +180,10 @@ function rec_split!(bt, node)
 
   left_center = sum(left_points)/length(left_points)
   right_center = sum(right_points)/length(right_points)
-  left_node = BallNode(false, node.dimension, left_center, left_tgt_points, left_tgt_indices, left_src_points, left_src_indices)
-  right_node = BallNode(false, node.dimension, right_center, right_tgt_points, right_tgt_indices, right_src_points, right_src_indices)
+  left_node = BallNode(false, node.dimension, left_center, left_tgt_points,
+              left_tgt_indices, left_src_points, left_src_indices, length(node.outgoing))
+  right_node = BallNode(false, node.dimension, right_center, right_tgt_points,
+              right_tgt_indices, right_src_points, right_src_indices, length(node.outgoing))
   left_node.parent = node
   right_node.parent = node # IDEA: recurse before constructing node?
   push!(bt.allnodes, left_node)
@@ -194,13 +203,13 @@ function heuristic_neighbor_scale(dimension::Int)
     dimension == 2 ? 3 : max(1, 3 / sqrt(dimension))
 end
 
-function initialize_tree(tgt_points, src_points, max_dofs_per_leaf,
+function initialize_tree(tgt_points, src_points, max_dofs_per_leaf, outgoing_length::Int,
                     neighbor_scale::Real = heuristic_neighbor_scale(length(tgt_points[1])))
   dimension = length(tgt_points[1])
-  center = sum(vcat(tgt_points,src_points))/(length(tgt_points)+length(src_points))
+  center = sum(vcat(tgt_points, src_points))/(length(tgt_points)+length(src_points))
 
   root = BallNode(false, dimension, center, tgt_points, collect(1:length(tgt_points)),
-    src_points, collect(1:length(src_points)))
+    src_points, collect(1:length(src_points)), outgoing_length)
   allnodes = [root]
   allleaves = fill(root, 0)
   bt = Tree(dimension, root, max_dofs_per_leaf, allnodes, allleaves, neighbor_scale)

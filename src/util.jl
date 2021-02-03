@@ -1,3 +1,5 @@
+const VecOfVec{T} = AbstractVector{<:AbstractVector{T}}
+
 using Combinatorics: doublefactorial
 doublefact(n::Int) = (n < 0) ? BigInt(1) : doublefactorial(n)
 

@@ -25,8 +25,12 @@ function mul!(y::AbstractVector, fact::MultipoleFactorization, x::AbstractVector
                 m = length(leaf.tgt_points)
                 if (num_multipoles * (m + tot_far_points)) < (m * tot_far_points)
                     total_compressed += 1
-                    if isempty(far_node.outgoing) # IDEA: have this pre-allocated in compute_transformation_mats
-                        far_node.outgoing = far_node.s2o * x[far_node.src_point_indices]
+                    if !far_node.outgoing_is_fresh
+                        # println(length(far_node.outgoing))
+                        x_far_src = @view x[far_node.src_point_indices]
+                        far_node.outgoing = far_node.s2o * x_far_src
+                        # mul!(far_node.outgoing, far_node.s2o, x_far_src) # this causes parallelism problems
+                        far_node.outgoing_is_fresh = true
                     end
                     xi = far_node.outgoing
                 else
@@ -39,9 +43,8 @@ function mul!(y::AbstractVector, fact::MultipoleFactorization, x::AbstractVector
         end
     end
     verbose && println("Compressed: ",total_compressed," not compressed: ", total_not_compressed)
-    # clean up IDEA: have this pre-allocated in compute_transformation_mats
-    for cell in fact.tree.allnodes
-        cell.outgoing = []
+    for cell in fact.tree.allnodes # parallel?
+        cell.outgoing_is_fresh = false
     end
     return y
 end

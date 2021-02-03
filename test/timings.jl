@@ -1,7 +1,7 @@
 # this is the original FastKernelTransform file, separated it out from the test suite for rapid testing
 using LinearAlgebra
 using FastKernelTransform
-using FastKernelTransform: gaussian_mixture_data
+using FastKernelTransform: gaussian_mixture_data, two_bump_data, uniform_data
 using TimerOutputs
 
 # Create the timer object
@@ -12,16 +12,18 @@ max_dofs_per_leaf = 256  # When to stop in tree decomposition
 precond_param     = max_dofs_per_leaf  # Size of diag blocks to inv for preconditioner
 
 trunc_param = 5
-dimension   = 4
+dimension   = 3
 
 # Parameter used for Gegenbauer polynomials
 alpha = dimension/2 - 1
 
 # Lookup table for transformation coefficients
-σ = .25
-c = 8
-data_generator(n, d) = gaussian_mixture_data(n, c, d, σ)
-points = data_generator(N, dimension)
+# σ = .25
+# c = 8
+# data_generator(n, d) = gaussian_mixture_data(n, c, d, σ)
+# points = data_generator(N, dimension)
+# points = uniform_data(N, dimension)
+points = two_bump_data(N, dimension)
 
 # define kernel
 using CovarianceFunctions
