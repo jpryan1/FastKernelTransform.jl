@@ -7,7 +7,7 @@ gaussian_data(n, d) = [randn(d) for _ in 1:n]
 # number of centers c
 # σ is std of data around centers
 function gaussian_mixture_data(n::Int, c::Int, d::Int, σ::Real)
-    mod(n, c) || throw("n ($n) is not divisible by c ($c)")
+    iszero(mod(n, c)) || throw("n ($n) is not divisible by c ($c)")
     nc = Int(floor(n/c))
     centers = gaussian_data(c, d)
     data = zeros(d, nc*c)
