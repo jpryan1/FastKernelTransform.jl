@@ -8,7 +8,7 @@ using TimerOutputs
 to = TimerOutput()
 
 N                 = 2*8192  # Number of points
-max_dofs_per_leaf = 256  # When to stop in tree decomposition
+max_dofs_per_leaf = 512  # When to stop in tree decomposition
 precond_param     = max_dofs_per_leaf  # Size of diag blocks to inv for preconditioner
 
 trunc_param = 5
@@ -46,7 +46,7 @@ mat = FmmMatrix(kernel, points, max_dofs_per_leaf, precond_param, trunc_param, t
     fact = factorize(mat)
 end
 
-@timeit to "Factorization matvec "       bbar      = fact * x
+@timeit to "Factorization matvec "       bbar      = *(fact, x, verbose = true)
 compare = false
 if compare
     @timeit to "Form dense matrix direct" begin

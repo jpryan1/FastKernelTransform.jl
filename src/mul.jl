@@ -15,8 +15,8 @@ function mul!(y::AbstractVector, fact::MultipoleFactorization, x::AbstractVector
     total_not_compressed = 0
 
     @sync for node in fact.tree.allnodes # computes all multipoles
-        @spawn begin
-            if !isempty(node.s2o)
+        if !isempty(node.s2o)
+            @spawn begin
                 x_far_src = @view x[node.src_point_indices]
                 mul!(node.outgoing, node.s2o, x_far_src)
             end

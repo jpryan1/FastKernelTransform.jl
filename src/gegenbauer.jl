@@ -22,7 +22,7 @@ function gegenbauer_normalizer(d::Int, n::Int)
         N_k_alpha = convert(Float64, N_k_alpha)
         N_k_alpha *= iseven(d) ? (2π)^(d/2) : 2*(2π)^((d-1)/2)
     end
-    N_k_alpha
+    return N_k_alpha
 end
 
 # iterative Chebyshev of the first or second kind
