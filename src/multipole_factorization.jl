@@ -217,7 +217,7 @@ function transformation_mats_kernel!(fact::MultipoleFactorization, leaf, timeit:
             @timeit fact.to "centering" begin
                 center(x) = difference(x, far_node.center)
                 recentered_tgt = center.(tgt_points)
-                recentered_src = center.(src_points)
+                recentered_src = center.(src_points) # IDEA: move out of loop?
             end
             if timeit
                 if isempty(far_node.s2o)

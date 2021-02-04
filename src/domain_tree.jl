@@ -229,19 +229,20 @@ function rec_split!(bt, node)
   right_node = BallNode(false, node.dimension, right_center, right_tgt_points,
               right_tgt_indices, right_src_points, right_src_indices, length(node.outgoing), new_sidelens)
 
-  left_node.parent = node
-  right_node.parent = node # IDEA: recurse before constructing node?
-  push!(bt.allnodes, left_node)
-  push!(bt.allnodes, right_node)
-  node.left_child = left_node
-  node.right_child = right_node
-
-  if length(left_points) > 2bt.max_dofs_per_leaf
-    rec_split!(bt, left_node) # IDEA: parallelize
-  end
-  if length(right_points) > 2bt.max_dofs_per_leaf
-    rec_split!(bt, right_node)
-  end
+    left_node.parent = node
+    right_node.parent = node # IDEA: recurse before constructing node?
+    push!(bt.allnodes, left_node)
+    push!(bt.allnodes, right_node)
+    node.left_child = left_node
+    node.right_child = right_node
+    @sync begin
+        if length(left_points) > 2bt.max_dofs_per_leaf
+            @spawn rec_split!(bt, left_node)
+        end
+        if length(right_points) > 2bt.max_dofs_per_leaf
+            @spawn rec_split!(bt, right_node)
+        end
+    end
 end
 
 function heuristic_neighbor_scale(dimension::Int)
