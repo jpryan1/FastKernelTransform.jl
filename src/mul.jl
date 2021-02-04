@@ -52,7 +52,7 @@ end
 
 # fallback for complex target
 function multiply_helper!(yi::AbstractVector{<:Complex}, o2i::AbstractMatrix, xi::AbstractVector, α::Real)
-    mul!(yi, leaf.o2i[far_node_idx], xi, α, 1) # yi is mathematically real
+    mul!(yi, o2i, xi, α, 1) # yi is mathematically real
 end
 # only carries out relevant MVMs if target is real
 # o2i is complex
