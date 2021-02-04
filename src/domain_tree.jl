@@ -10,7 +10,7 @@ mutable struct BallNode{PT<:AbstractVector{<:AbstractVector{<:Real}},
                       OT<:AbstractVector{<:Number},
                       #MT<:AbstractMatrix{<:Real},
                       DT,
-                      ST<:AbstractMatrix{<:Number},
+                      # ST<:AbstractMatrix{<:Number},
                       # OIT<:AbstractVector{AbstractMatrix{<:Number}},
                       CT}
     is_precond_node::Bool  # is Node whose diag block is inv'd for precond TODO may be unnecessary
@@ -26,7 +26,7 @@ mutable struct BallNode{PT<:AbstractVector{<:AbstractVector{<:Real}},
     near_mat::AbstractMatrix # TODO: think about how to handle lazy / dense matrices elegantly
     diag_block::DT
     # Below are source2outgoing and outgoing2incoming mats, created at factor time
-    s2o::ST
+    s2o::AbstractMatrix
     o2i::AbstractVector # {AbstractMatrix{<:Number}} # TODO: think about how to handle lazy / dense matrices elegantly
     left_child # can be BallNode or Nothing
     right_child # can be BallNode or Nothing

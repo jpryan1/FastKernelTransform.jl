@@ -119,6 +119,8 @@ end
 
 Base.size(F::MultipoleFactorization) = (F.n_tgt_points, F.n_src_points)
 Base.size(F::MultipoleFactorization, i::Int) = i > 2 ? 1 : (i==1 ? F.n_tgt_points : F.n_src_points)
+# number of multipoles of factorization
+nmultipoles(fact::MultipoleFactorization) = length(keys(fact.multi_to_single))
 
 function get_index_mapping_table(dimension::Int, trunc_param::Int, radial_fun_ranks::AbstractVector{Int})
     counter = 0
@@ -147,7 +149,7 @@ function compute_preconditioner!(fact::MultipoleFactorization, precond_param::In
             @spawn begin
                 tgt_points = node.tgt_points
                 K = fact.kernel.(tgt_points, permutedims(tgt_points)) # IDEA: can the kernel matrix be extracted from node.near_mat?
-                diagonal_correction!(K, variance, node.tgt_point_indices)
+                K = diagonal_correction!(K, variance, node.tgt_point_indices)
                 node.diag_block = cholesky!(K, Val(true), tol = 1e-7, check = false) # in-place
             end
         else
@@ -158,31 +160,19 @@ function compute_preconditioner!(fact::MultipoleFactorization, precond_param::In
     return fact
  end
 
-using LinearAlgebra: checksquare
-# TODO: fix this for lazy K! only need to define multiply
-diagonal_correction!(K::AbstractMatrix, variance::Nothing, indices) = nothing
-function diagonal_correction!(K::AbstractMatrix, variance::AbstractVector, indices)
-    (checksquare(K) == length(indices)) || throw(DimensionMismatch("checksquare(K) = $(checksquare(K)) ≠ $(length(indices)) = length(indices)"))
-    var_ind = @view variance[indices]
-    for (i, di) in enumerate(diagind(K))
-         K[di] += var_ind[i]
-     end
-     return K
-end
-
 function compute_transformation_mats!(fact::MultipoleFactorization)
     @timeit fact.to "parallel transformation_mats" begin
         @sync for leaf in fact.tree.allleaves
             if !isempty(leaf.tgt_points)
-                @spawn transformation_mats_kernel!(fact, leaf, false) # have to switch off timers if parallel
-                # transformation_mats_kernel!(fact, leaf, true) # have to switch off timers if parallel
+                # @spawn transformation_mats_kernel!(fact, leaf, false) # have to switch off timers if parallel
+                transformation_mats_kernel!(fact, leaf, true) # have to switch off timers if parallel
             end
         end
     end
 end
 
 function transformation_mats_kernel!(fact::MultipoleFactorization, leaf, timeit::Bool = true)
-    num_multipoles = length(keys(fact.multi_to_single))
+    num_multipoles = nmultipoles(fact)
     T = Float64 # TODO: make this more generic
 
     tgt_points = leaf.tgt_points
@@ -194,7 +184,7 @@ function transformation_mats_kernel!(fact::MultipoleFactorization, leaf, timeit:
 
     if timeit
         @timeit fact.to "get near mat" begin
-            G = gramian(fact.kernel, tgt_points, src_points)
+            G = gramian(fact.kernel, tgt_points, src_points) # wide matrix
             leaf.near_mat = prod(size(G)) > fact.lazy_size^2 ? G : Matrix(G)
         end
     else
@@ -202,16 +192,14 @@ function transformation_mats_kernel!(fact::MultipoleFactorization, leaf, timeit:
         leaf.near_mat = prod(size(G)) > fact.lazy_size^2 ? G : Matrix(G)
     end
 
-    if issymmetric(fact) # if target and source are equal,
-        ind = 1:size(leaf.near_mat, 1) # square submatrix needs diagonal correction (self interactions)
-        A = @view leaf.near_mat[ind, ind]
-        diagonal_correction!(A, fact.variance, leaf.tgt_point_indices)
+    if issymmetric(fact) # if target and source are equal, need to apply diagonal correction
+        leaf.near_mat = diagonal_correction!(leaf.near_mat, fact.variance, leaf.tgt_point_indices)
     end
 
     tot_far_points = get_tot_far_points(leaf)
     m = length(leaf.tgt_point_indices)
     if (num_multipoles * (m + tot_far_points)) < (m * tot_far_points) # only use multipoles if it is efficient
-        leaf.o2i = Vector{Matrix{Complex{T}}}(undef, length(leaf.far_nodes)) # TODO: separate this out as function for readability
+        leaf.o2i = Vector{AbstractMatrix{Complex{T}}}(undef, length(leaf.far_nodes)) # TODO: separate this out as function for readability
         for far_node_idx in eachindex(leaf.far_nodes) # IDEA: parallelize?
             far_node = leaf.far_nodes[far_node_idx]
             if isempty(far_node.src_points) continue end
@@ -221,14 +209,42 @@ function transformation_mats_kernel!(fact::MultipoleFactorization, leaf, timeit:
             recentered_src = center.(src_points)
             if timeit
                 if isempty(far_node.s2o)
-                    @timeit fact.to "source2outgoing" far_node.s2o = source2outgoing(fact, recentered_src)
+                    @timeit fact.to "source2outgoing" begin
+                        generator = ()->source2outgoing(fact, recentered_src, false)
+                        n, m = num_multipoles, length(recentered_src)
+                        if n * m > fact.lazy_size^2 # TODO: abstract away
+                            far_node.s2o = LazyMultipoleMatrix{Complex{T}}(generator, n, m)
+                        else
+                            far_node.s2o = generator()
+                        end
+                    end
                 end
-                @timeit fact.to "outgoing2incoming" leaf.o2i[far_node_idx] = outgoing2incoming(fact, recentered_tgt)
+                @timeit fact.to "outgoing2incoming" begin
+                    generator = ()->outgoing2incoming(fact, recentered_tgt, false)
+                    n, m = length(recentered_tgt), num_multipoles
+                    if n * m > fact.lazy_size^2
+                        leaf.o2i[far_node_idx] = LazyMultipoleMatrix{Complex{T}}(generator, n, m)
+                    else
+                        leaf.o2i[far_node_idx] = generator()
+                    end
+                end
             else
                 if isempty(far_node.s2o)
-                    far_node.s2o = source2outgoing(fact, recentered_src, timeit)
+                    generator = ()->source2outgoing(fact, recentered_src, false)
+                    n, m = num_multipoles, length(recentered_src)
+                    if n * m > fact.lazy_size^2 # TODO: abstract away
+                        far_node.s2o = LazyMultipoleMatrix{Complex{T}}(generator, n, m)
+                    else
+                        far_node.s2o = generator()
+                    end
                 end
-                leaf.o2i[far_node_idx] = outgoing2incoming(fact, recentered_tgt, timeit)
+                generator = ()->outgoing2incoming(fact, recentered_tgt, false)
+                n, m = length(recentered_tgt), num_multipoles
+                if n * m > fact.lazy_size^2
+                    leaf.o2i[far_node_idx] = LazyMultipoleMatrix{Complex{T}}(generator, n, m)
+                else
+                    leaf.o2i[far_node_idx] = generator()
+                end
             end
         end
     else
@@ -305,7 +321,7 @@ function outgoing2incoming(fact::MultipoleFactorization, recentered_tgt::Abstrac
 end
 
 function source2outgoing(fact::MultipoleFactorization, recentered_src::AbstractVector{<:AbstractVector{<:Real}}, timeit::Bool = true)
-    s2o_mat = zeros(Complex{Float64}, length(keys(fact.multi_to_single)), length(recentered_src))
+    s2o_mat = zeros(Complex{Float64}, nmultipoles(fact), length(recentered_src))
     n, d = length(recentered_src), length(recentered_src[1])
     rj_hyps = cart2hyp.(recentered_src)
     if timeit
@@ -321,8 +337,6 @@ function source2outgoing(fact::MultipoleFactorization, recentered_src::AbstractV
         N_k_alpha = gegenbauer_normalizer(d, k)
         if timeit
             @timeit fact.to "multiindices" multiindices = get_multiindices(d, k)
-            # hyp_harms_k = @view hyp_harms[1:length(multiindices), :]
-            # @timeit fact.to "hypharmcalc" hyperharms!(hyp_harms_k, fact, k, rj_hyps, true, multiindices)
             @timeit fact.to "hypharmcalc" begin
                 hyp_harms_k = @view hyp_harms[:, 1:length(multiindices)]
                 if d > 2

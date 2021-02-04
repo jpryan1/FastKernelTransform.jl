@@ -61,6 +61,10 @@ function multiply_helper!(yi::AbstractVector{<:Real}, o2i::AbstractMatrix{<:Comp
     mul!(yi, Re, xi, α, 1)
 end
 
+function multiply_helper!(yi::AbstractVector{<:Real}, o2i::LazyMultipoleMatrix, xi::AbstractVector{<:Complex}, α::Real)
+    multiply_helper!(yi, Matrix(o2i), xi, α)
+end
+
 function multiply_helper!(yi::AbstractVector{<:Real}, o2i::AbstractMatrix{<:Complex}, xi::AbstractVector{<:Complex}, α::Real)
     Re, Im = real_imag_views(o2i)
     re_xi, im_xi = real_imag_views(xi)

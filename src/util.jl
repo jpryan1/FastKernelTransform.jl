@@ -1,14 +1,72 @@
+################################# Linear Algebra ###############################
 const VecOfVec{T} = AbstractVector{<:AbstractVector{T}}
 
-using Combinatorics: doublefactorial
-doublefact(n::Int) = (n < 0) ? BigInt(1) : doublefactorial(n)
+# type to delay instantiating multipole matrices until multiply
+struct LazyMultipoleMatrix{T, G} <: AbstractMatrix{T}
+    generator::G
+    n::Int
+    m::Int
+end
+function LazyMultipoleMatrix{T}(generator::G, n::Int, m::Int) where {T, G}
+    LazyMultipoleMatrix{T, G}(generator, n, m)
+end
+Base.size(L::LazyMultipoleMatrix) = (L.n, L.m)
+LinearAlgebra.Matrix(A::LazyMultipoleMatrix) = A.generator() # instantiates matrix when needed
+function LinearAlgebra.mul!(y::AbstractVector, A::LazyMultipoleMatrix, x::AbstractVector, α::Real = 1, β::Real = 0)
+    mul!(y, Matrix(A), x, α, β) # multiply
+end
 
-# miscellaneous helpers
+using LinearAlgebra: checksquare
+diagonal_correction!(K::AbstractMatrix, variance::Nothing, indices) = K
+function diagonal_correction!(K::AbstractMatrix, variance::AbstractVector, indices)
+    n = length(indices)
+    n == length(diagind(K)) || throw(DimensionMismatch("checksquare(K) = $(checksquare(K)) ≠ $(length(indices)) = length(indices)"))
+    var_ind = @view variance[indices]
+    for (i, di) in enumerate(diagind(K))
+         K[di] += var_ind[i]
+     end
+     return K
+end
+
+# WARNING: return type is critical here!
+function diagonal_correction!(K::Gramian, variance::AbstractVector, indices)
+    D = Diagonal(variance[indices])
+    LazyDiagonalCorrection(K, D)
+end
+
+# type to add diagonal correction to lazy matrix
+struct LazyDiagonalCorrection{T, AT<:AbstractMatrix{T}, DT<:Diagonal} <: AbstractMatrix{T}
+    A::AT
+    D::DT
+end
+Base.size(L::LazyDiagonalCorrection) = size(L.A)
+function Base.getindex(L::LazyDiagonalCorrection, i::Int, j::Int)
+    L.A[i, j] + (i == j ? L.D[i, j] : 0)
+end
+function LinearAlgebra.Matrix(L::LazyDiagonalCorrection)
+    A = Matrix(L.A)
+    for (i, ii) in enumerate(diagind(A))
+        A[ii] += L.D[i, i]
+    end
+    return A
+end
+function LinearAlgebra.mul!(y::AbstractVector, A::LazyDiagonalCorrection, x::AbstractVector, α::Real = 1, β::Real = 0)
+    mul!(y, A.A, x, α, β) # multiply
+    n = size(A.D, 1)
+    if length(x) == n
+        return mul!(y, A.D, x, α, 1)
+    else
+        i = 1:n
+        xi, yi = @views x[i], y[i]
+        return mul!(yi, A.D, xi, α, 1)
+    end
+end
+
+############################# rational QR factorization ########################
 function proj(a, u)
     return u*(dot(u, a)//dot(u, u))
 end
 
-# rational qr factorization
 function rationalrrqr!(mat)
     n, m = size(mat)
     Q = Array{Complex{Rational{BigInt}}}(undef, n, n)
@@ -56,3 +114,8 @@ function real_imag_views(Z::AbstractArray{<:Complex})
     Im = reshape(im, size(Z))
     return Re, Im
 end
+
+
+############################ miscellaneous helpers #############################
+using Combinatorics: doublefactorial
+doublefact(n::Int) = (n < 0) ? BigInt(1) : doublefactorial(n)
