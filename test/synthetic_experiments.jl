@@ -15,7 +15,7 @@ to = TimerOutput()
 # dimensions = [3]
 
 f = h5open("FKT_synthetic_experiments_D_scaling.h5", "w")
-sizes = [12250, 25000, 50000,100000]
+sizes = [25000, 50000, 100000]
 dimensions = [3, 5, 7]
 f["sizes"] = sizes
 f["dimensions"] = dimensions
@@ -32,10 +32,11 @@ generators = ( gm_data)
 gen_names = [ "mixture"]
 f["generators"] = gen_names
 
-max_dofs_per_leaf = [512,1024]  # When to stop in tree decomposition
 precond_param     = 0  # Size of diag blocks to inv for preconditioner
-trunc_param = 5
-f["max_dofs_per_leaf"] = ["512", "1024"]
+trunc_param = 4
+max_dofs_per_leaf = [1024]  # When to stop in tree decomposition
+max_dofs_fun(p, d) = 4binomial(p + d, d)
+f["max_dofs_per_leaf"] = "functional"
 
 nexperiments = 3 # number of different random datasets for each size
 f["nexperiments"] = nexperiments
@@ -62,10 +63,12 @@ nano = 1e9 # conversion to seconds from nano seconds
 
 for k in eachindex(max_dofs_per_leaf)
     mdpl = max_dofs_per_leaf[k]
-    println("max dofs ",max_dofs_per_leaf[k])
+    println("max dofs ", max_dofs_per_leaf[k])
     for j in eachindex(dimensions)
         d = dimensions[j]
         println("dim ", d)
+        mdpl = max_dofs_fun(trunc_param, d)
+        println("max dofs ", mdpl)
         for i in eachindex(sizes)
             n = sizes[i]
             println("size ", n)
@@ -82,7 +85,7 @@ for k in eachindex(max_dofs_per_leaf)
                 println("factor ",factor_times[exp_i, i, j, k] / nano )
                 # fast multiply benchmark
                 F = fkt(K)
-                bench = @benchmarkable mul!($b, $F, $y)
+                bench = @benchmarkable mul!($b, $F, $y, verbose = $true)
                 fast_times[exp_i, i, j, k] = minimum(run(bench, samples = 1)).time
                 println("fast ",fast_times[exp_i, i, j, k] / nano )
 

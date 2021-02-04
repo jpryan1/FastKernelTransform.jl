@@ -89,7 +89,7 @@ function MultipoleFactorization(kernel, tgt_points::VecOfVec{<:Real}, src_points
                                 max_dofs_per_leaf::Int, precond_param::Int,
                                 trunc_param::Int, get_F, get_G, radial_fun_ranks::AbstractVector,
                                 to::TimerOutput = TimerOutput(), variance = nothing;
-                                lazy_size::Int = 1024)
+                                lazy_size::Int = 4096)
 
     (max_dofs_per_leaf ≤ precond_param ||(precond_param == 0)) || throw(DomainError("max_dofs_per_leaf < precond_param"))
     n_tgt_points = length(tgt_points)
@@ -168,8 +168,8 @@ function compute_transformation_mats!(fact::MultipoleFactorization)
     @timeit fact.to "parallel transformation_mats" begin
         @sync for leaf in fact.tree.allleaves
             if !isempty(leaf.tgt_points)
-                # @spawn transformation_mats_kernel!(fact, leaf, false) # have to switch off timers if parallel
-                transformation_mats_kernel!(fact, leaf, true) # have to switch off timers if parallel
+                @spawn transformation_mats_kernel!(fact, leaf, false) # have to switch off timers if parallel
+                # transformation_mats_kernel!(fact, leaf, true) # have to switch off timers if parallel
             end
         end
     end
@@ -229,7 +229,7 @@ function transformation_mats_kernel!(fact::MultipoleFactorization, leaf, timeit:
             if timeit
                 @timeit fact.to "dense outgoing2incoming" leaf.o2i[far_node_idx] = fact.kernel.(leaf.tgt_points, permutedims(far_node.src_points))
             else
-                leaf.o2i[far_node_idx] = fact.kernel.(leaf.tgt_points, permutedims(far_node.src_points))
+                leaf.o2i[far_node_idx] = fact.kernel.(leaf.tgt_points, permutedims(far_node.src_points)) # IDEA: also lazy?
             end
         end
     end
