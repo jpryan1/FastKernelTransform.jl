@@ -15,24 +15,29 @@ to = TimerOutput()
 # dimensions = [3]
 
 f = h5open("FKT_synthetic_experiments_D_scaling.h5", "w")
-sizes = [8000]
-dimensions = [2, 3, 4, 5]
+sizes = [12250, 25000, 50000,100000]
+dimensions = [3, 5, 7]
 f["sizes"] = sizes
 f["dimensions"] = dimensions
 
 σ = .2
-c = 8
+c = 10
 gm_data(n, d) = gaussian_mixture_data(n, c, d, σ)
 create_group(f, "mixture parameters")
 g = f["mixture parameters"]
-g["c"] = 8 # number of centers
+g["c"] = c # number of centers
 g["sigma"] = σ # std of clusters
 
-generators = (uniform_data, gaussian_data, gm_data)
-gen_names = ["uniform", "gaussian", "mixture"]
+generators = ( gm_data)
+gen_names = [ "mixture"]
 f["generators"] = gen_names
 
-nexperiments = 1 # number of different random datasets for each size
+max_dofs_per_leaf = [512,1024]  # When to stop in tree decomposition
+precond_param     = 0  # Size of diag blocks to inv for preconditioner
+trunc_param = 5
+f["max_dofs_per_leaf"] = ["512", "1024"]
+
+nexperiments = 3 # number of different random datasets for each size
 f["nexperiments"] = nexperiments
 nsamples = 1 # number of different runs for benchmarking results
 f["nsamples"] = nsamples
@@ -43,21 +48,21 @@ using CovarianceFunctions: Exp, EQ, MaternP, Matern, Cauchy
 kernel = Exp()
 
 # FKT parameters # IDEA could loop through hyper-parameters
-max_dofs_per_leaf = 256  # When to stop in tree decomposition
-precond_param     = 2max_dofs_per_leaf  # Size of diag blocks to inv for preconditioner
-trunc_param = 5
-f["max_dofs_per_leaf"] = max_dofs_per_leaf
+
 f["precond_param"] = precond_param
 f["trunc_param"] = trunc_param
 
-factor_times = zeros(nexperiments, length(sizes), length(dimensions), length(generators))
-fast_times = zeros(nexperiments, length(sizes), length(dimensions), length(generators))
-lazy_times = zeros(nexperiments, length(sizes), length(dimensions), length(generators))
+factor_times = zeros(nexperiments, length(sizes), length(dimensions), length(max_dofs_per_leaf))
+fast_times = zeros(nexperiments, length(sizes), length(dimensions), length(max_dofs_per_leaf))
+lazy_times = zeros(nexperiments, length(sizes), length(dimensions), length(max_dofs_per_leaf))
 # dense_times = zeros(nexperiments, length(sizes), length(dimensions), length(generators))
 
-for k in eachindex(generators)
-    gen = generators[k]
-    println(gen_names[k])
+gen = gm_data
+nano = 1e9 # conversion to seconds from nano seconds
+
+for k in eachindex(max_dofs_per_leaf)
+    mdpl = max_dofs_per_leaf[k]
+    println("max dofs ",max_dofs_per_leaf[k])
     for j in eachindex(dimensions)
         d = dimensions[j]
         println("dim ", d)
@@ -71,14 +76,15 @@ for k in eachindex(generators)
                 points = gen(n, d) # generate data set
 
                 # factor benchmark
-                K = FmmMatrix(kernel, points, max_dofs_per_leaf, precond_param, trunc_param, to)
+                K = FmmMatrix(kernel, points, mdpl, precond_param, trunc_param, to)
                 bench = @benchmarkable fkt($K)
                 factor_times[exp_i, i, j, k] = minimum(run(bench, samples = 1)).time
-
+                println("factor ",factor_times[exp_i, i, j, k] /nano )
                 # fast multiply benchmark
                 F = fkt(K)
                 bench = @benchmarkable mul!($b, $F, $y)
                 fast_times[exp_i, i, j, k] = minimum(run(bench, samples = 1)).time
+                println("fast ",fast_times[exp_i, i, j, k] /nano )
 
                 if n ≤ 2^14
                     # lazy multiply benchmark
@@ -91,7 +97,6 @@ for k in eachindex(generators)
     end
 end
 
-nano = 1e9 # conversion to seconds from nano seconds
 factor_times ./= nano
 fast_times ./= nano
 lazy_times ./= nano

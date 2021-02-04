@@ -88,7 +88,8 @@ function MultipoleFactorization(kernel, tgt_points::VecOfVec{<:Real}, src_points
                                 max_dofs_per_leaf::Int, precond_param::Int,
                                 trunc_param::Int, get_F, get_G, radial_fun_ranks::AbstractVector,
                                 to::TimerOutput = TimerOutput(), variance = nothing)
-    max_dofs_per_leaf ≤ precond_param || throw(DomainError("max_dofs_per_leaf < precond_param"))
+
+    (max_dofs_per_leaf ≤ precond_param ||(precond_param == 0)) || throw(DomainError("max_dofs_per_leaf < precond_param"))
     n_tgt_points = length(tgt_points)
     n_src_points = length(src_points)
     dimension = length(tgt_points[1])
