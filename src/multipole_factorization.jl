@@ -177,7 +177,7 @@ function transformation_mats_kernel!(fact::MultipoleFactorization, leaf, timeit:
     num_multipoles = nmultipoles(fact)
     T = Float64 # TODO: make this more generic
 
-    @timeit "copying" begin
+    @timeit fact.to "copying" begin
         tgt_points = leaf.tgt_points
         src_points = leaf.src_points
         src_points = vcat(src_points, [neighbor.src_points for neighbor in leaf.neighbors]...) # TODO: this allocates!
@@ -214,8 +214,8 @@ function transformation_mats_kernel!(fact::MultipoleFactorization, leaf, timeit:
             far_node = leaf.far_nodes[far_node_idx]
             if isempty(far_node.src_points) continue end
             src_points = far_node.src_points
-            @timeit "centering" begin
-                center(x) = x - far_node.center
+            @timeit fact.to "centering" begin
+                center(x) = difference(x, far_node.center)
                 recentered_tgt = center.(tgt_points)
                 recentered_src = center.(src_points)
             end
