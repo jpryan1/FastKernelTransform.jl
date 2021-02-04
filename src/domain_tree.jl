@@ -196,7 +196,13 @@ function rec_split!(bt, node)
 end
 
 function heuristic_neighbor_scale(dimension::Int)
-    dimension == 2 ? 3 : max(1, 3 / sqrt(dimension))
+    if dimension == 2
+      return 3
+    elseif dimension == 3
+      return 1.2
+    else
+      return max(1, 3 / sqrt(dimension))
+    end
 end
 
 function initialize_tree(tgt_points, src_points, max_dofs_per_leaf, outgoing_length::Int,
