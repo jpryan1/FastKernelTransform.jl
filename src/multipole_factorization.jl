@@ -164,8 +164,8 @@ function compute_transformation_mats!(fact::MultipoleFactorization)
     @timeit fact.to "parallel transformation_mats" begin
         @sync for leaf in fact.tree.allleaves
             if !isempty(leaf.tgt_points)
-                # @spawn transformation_mats_kernel!(fact, leaf, false) # have to switch off timers if parallel
-                transformation_mats_kernel!(fact, leaf, true) # have to switch off timers if parallel
+                @spawn transformation_mats_kernel!(fact, leaf, false) # have to switch off timers if parallel
+                # transformation_mats_kernel!(fact, leaf, true) # have to switch off timers if parallel
             end
         end
     end
@@ -177,20 +177,13 @@ function transformation_mats_kernel!(fact::MultipoleFactorization, leaf, timeit:
     num_multipoles = nmultipoles(fact)
     T = Float64 # TODO: make this more generic
 
-    @timeit fact.to "copying" begin
-        tgt_points = leaf.tgt_points
-        src_points = leaf.src_points
-        src_points = vcat(src_points, [neighbor.src_points for neighbor in leaf.neighbors]...) # TODO: this allocates!
-        src_indices = leaf.src_point_indices
-        src_indices = vcat(src_indices, [neighbor.src_point_indices for neighbor in leaf.neighbors]...)
-        leaf.near_indices = src_indices
-    end
-    # tgt_points = leaf.tgt_points
-    # src_points = leaf.src_points
-    # src_points = append!(src_points, [neighbor.src_points for neighbor in leaf.neighbors]...) # TODO: this allocates!
-    # src_indices = leaf.src_point_indices
-    # src_indices = vcat(src_indices, [neighbor.src_point_indices for neighbor in leaf.neighbors]...)
-    # leaf.near_indices = src_indices
+    # WARNING: BOTTLENECK
+    tgt_points = leaf.tgt_points
+    src_points = leaf.src_points
+    src_points = vcat(src_points, [neighbor.src_points for neighbor in leaf.neighbors]...) # TODO: this allocates!
+    src_indices = leaf.src_point_indices
+    src_indices = vcat(src_indices, [neighbor.src_point_indices for neighbor in leaf.neighbors]...)
+    leaf.near_indices = src_indices
 
     if timeit
         @timeit fact.to "get near mat" begin
@@ -214,11 +207,11 @@ function transformation_mats_kernel!(fact::MultipoleFactorization, leaf, timeit:
             far_node = leaf.far_nodes[far_node_idx]
             if isempty(far_node.src_points) continue end
             src_points = far_node.src_points
-            @timeit fact.to "centering" begin
-                center(x) = difference(x, far_node.center)
-                recentered_tgt = center.(tgt_points)
-                recentered_src = center.(src_points) # IDEA: move out of loop?
-            end
+
+            center(x) = difference(x, far_node.center) # WARNING: BOTTLENECK
+            recentered_tgt = center.(tgt_points)
+            recentered_src = center.(src_points) # IDEA: move out of loop?
+
             if timeit
                 if isempty(far_node.s2o)
                     @timeit fact.to "source2outgoing" begin
