@@ -229,6 +229,7 @@ function rec_split!(bt, node)
   push!(bt.allnodes, right_node)
   node.left_child = left_node
   node.right_child = right_node
+
   if length(left_points) > 2bt.max_dofs_per_leaf
     rec_split!(bt, left_node) # IDEA: parallelize
   end
@@ -238,7 +239,13 @@ function rec_split!(bt, node)
 end
 
 function heuristic_neighbor_scale(dimension::Int)
-    dimension == 2 ? 3 : max(1, 3 / sqrt(dimension))
+    if dimension == 2
+      return 3
+    elseif dimension == 3
+      return 1.2
+    else
+      return max(1, 3 / sqrt(dimension))
+    end
 end
 
 function initialize_tree(tgt_points, src_points, max_dofs_per_leaf, outgoing_length::Int,
@@ -272,17 +279,22 @@ function initialize_tree(tgt_points, src_points, max_dofs_per_leaf, outgoing_len
   #   tot_leaf_points += length(leaf.tgt_points)
   #   tot_far += length(leaf.far_nodes)
   # end
+  # vec = [length(node.tgt_points) for node in bt.allleaves]
   # println("Num leaves ", length(bt.allleaves))
   # println("Num nodes ", length(bt.allnodes))
   # println("Avg far ", tot_far/length(bt.allleaves))
+  # println("Mean points ", mean(vec))
+  # println("Median points ", median(vec))
+  # println("Minimum points ", minimum(vec))
+  # println("Maximum points ", maximum(vec))
   # println("Avg leaf_points ", tot_leaf_points/length(bt.allleaves))
   return bt
 end
-#
-#
-# N=1000000
-# dimension = 3
-# max_dofs_per_leaf = 140
+
+
+# N=2000
+# dimension = 2
+# max_dofs_per_leaf = 100
 # # points  = [randn(dimension) for i in 1:N]  #
 # points = [rand() > 0.5 ? randn(dimension) : 3*ones(dimension)+randn(dimension) for i in 1:N]
 # bt = initialize_tree(points, points, max_dofs_per_leaf, 0, 1.1)

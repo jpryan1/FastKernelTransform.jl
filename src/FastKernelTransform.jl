@@ -16,6 +16,7 @@ using TaylorSeries
 
 using TimerOutputs
 
+using Statistics
 using CovarianceFunctions
 
 export MultipoleFactorization

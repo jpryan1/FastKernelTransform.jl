@@ -34,7 +34,7 @@ f["generators"] = gen_names
 
 precond_param     = 0  # Size of diag blocks to inv for preconditioner
 trunc_param = 4
-max_dofs_per_leaf = [1024]  # When to stop in tree decomposition
+max_dofs_per_leaf_multiplier = [0.5, 1]  # When to stop in tree decomposition
 max_dofs_fun(p, d) = 4binomial(p + d, d)
 f["max_dofs_per_leaf"] = "functional"
 
@@ -61,13 +61,11 @@ lazy_times = zeros(nexperiments, length(sizes), length(dimensions), length(max_d
 gen = gm_data
 nano = 1e9 # conversion to seconds from nano seconds
 
-for k in eachindex(max_dofs_per_leaf)
-    mdpl = max_dofs_per_leaf[k]
-    println("max dofs ", max_dofs_per_leaf[k])
+for k in eachindex(max_dofs_per_leaf_multiplier)
     for j in eachindex(dimensions)
         d = dimensions[j]
         println("dim ", d)
-        mdpl = max_dofs_fun(trunc_param, d)
+        mdpl = max_dofs_per_leaf_multiplier[k]*max_dofs_fun(trunc_param, d)
         println("max dofs ", mdpl)
         for i in eachindex(sizes)
             n = sizes[i]
