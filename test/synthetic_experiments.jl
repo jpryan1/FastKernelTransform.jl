@@ -34,7 +34,7 @@ f["generators"] = gen_names
 
 precond_param     = 0  # Size of diag blocks to inv for preconditioner
 trunc_param = 4
-max_dofs_per_leaf_multiplier = [1,2]  # When to stop in tree decomposition
+max_dofs_per_leaf_multiplier = [2]  # When to stop in tree decomposition
 max_dofs_fun(p, d) = 2binomial(p + d, d)
 f["max_dofs_per_leaf"] = "functional"
 

@@ -143,7 +143,7 @@ end
 function compute_preconditioner!(fact::MultipoleFactorization, precond_param::Int,
                                  variance::Union{AbstractVector, Nothing} = fact.variance)
     node_queue = [fact.tree.root]
-    @sync while !isempty(node_queue) # IDEA: parallelize
+    @sync while !isempty(node_queue)
         node = pop!(node_queue)
         if length(node.tgt_point_indices) ≤ precond_param
             @spawn begin
@@ -171,16 +171,26 @@ function compute_transformation_mats!(fact::MultipoleFactorization)
     end
 end
 
+# TODO: get rid of @timeit, do future profiling with Profiler
+# IDEA: By default, do everything lazy, have "instantiate" function, which pre-allocates matrices if necessary
 function transformation_mats_kernel!(fact::MultipoleFactorization, leaf, timeit::Bool = true)
     num_multipoles = nmultipoles(fact)
     T = Float64 # TODO: make this more generic
 
-    tgt_points = leaf.tgt_points
-    src_points = leaf.src_points
-    src_points = vcat(src_points, [neighbor.src_points for neighbor in leaf.neighbors]...)
-    src_indices = leaf.src_point_indices
-    src_indices = vcat(src_indices, [neighbor.src_point_indices for neighbor in leaf.neighbors]...)
-    leaf.near_indices = src_indices
+    @timeit "copying" begin
+        tgt_points = leaf.tgt_points
+        src_points = leaf.src_points
+        src_points = vcat(src_points, [neighbor.src_points for neighbor in leaf.neighbors]...) # TODO: this allocates!
+        src_indices = leaf.src_point_indices
+        src_indices = vcat(src_indices, [neighbor.src_point_indices for neighbor in leaf.neighbors]...)
+        leaf.near_indices = src_indices
+    end
+    # tgt_points = leaf.tgt_points
+    # src_points = leaf.src_points
+    # src_points = append!(src_points, [neighbor.src_points for neighbor in leaf.neighbors]...) # TODO: this allocates!
+    # src_indices = leaf.src_point_indices
+    # src_indices = vcat(src_indices, [neighbor.src_point_indices for neighbor in leaf.neighbors]...)
+    # leaf.near_indices = src_indices
 
     if timeit
         @timeit fact.to "get near mat" begin
@@ -204,9 +214,11 @@ function transformation_mats_kernel!(fact::MultipoleFactorization, leaf, timeit:
             far_node = leaf.far_nodes[far_node_idx]
             if isempty(far_node.src_points) continue end
             src_points = far_node.src_points
-            center(x) = x - far_node.center
-            recentered_tgt = center.(tgt_points)
-            recentered_src = center.(src_points)
+            @timeit "centering" begin
+                center(x) = x - far_node.center
+                recentered_tgt = center.(tgt_points)
+                recentered_src = center.(src_points)
+            end
             if timeit
                 if isempty(far_node.s2o)
                     @timeit fact.to "source2outgoing" begin
