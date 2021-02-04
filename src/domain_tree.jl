@@ -7,7 +7,7 @@ mutable struct BallNode{PT<:AbstractVector{<:AbstractVector{<:Real}},
                       PIT<:AbstractVector{<:Int},
                       NT<:AbstractVector,
                       OT<:AbstractVector{<:Number},
-                      MT<:AbstractMatrix{<:Real},
+                      #MT<:AbstractMatrix{<:Real},
                       DT,
                       ST<:AbstractMatrix{<:Number},
                       OIT<:AbstractVector{<:AbstractMatrix{<:Number}},
@@ -23,7 +23,7 @@ mutable struct BallNode{PT<:AbstractVector{<:AbstractVector{<:Real}},
     far_nodes::NT
     outgoing::OT  # This is an array of multipole coefficients, created at matvec time
 
-    near_mat::MT
+    near_mat::AbstractMatrix # TODO: think about how to handle lazy / dense matrices elegantly
     diag_block::DT
     # Below are source2outgoing and outgoing2incoming mats, created at factor time
     s2o::ST

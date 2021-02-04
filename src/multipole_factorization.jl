@@ -9,7 +9,6 @@ mutable struct FmmMatrix{K, V<:AbstractVector{<:AbstractVector{<:Real}}, VT} # I
     variance::VT
 end
 
-
 function FmmMatrix(kernel, tgt_points::VecOfVec{<:Real}, src_points::VecOfVec{<:Real},
                    max_dofs_per_leaf::Int, precond_param::Int, trunc_param::Int,
                    to::TimerOutput = TimerOutput())
@@ -61,6 +60,7 @@ struct MultipoleFactorization{K, TO<:TimerOutput, MST, NT, TT<:Tree, FT, GT, RT<
 
     variance::VT # additive diagonal correction
     symmetric::Bool
+    lazy_size::Int
 end
 LinearAlgebra.issymmetric(F::MultipoleFactorization) = F.symmetric
 
@@ -81,13 +81,15 @@ function MultipoleFactorization(kernel, tgt_points::VecOfVec{<:Real}, src_points
                            trunc_param, get_F, get_G, radial_fun_ranks, to, variance)
 end
 
+# const lazy_size_init = 1024
 # takes arbitrary isotropic kernel
 # IDEA: convert points to vector of static arrays, dispatch 2d (and 1d) implementation on its type!
 # IDEA: given radial_fun_ranks, can we get rid of trunc_param?
 function MultipoleFactorization(kernel, tgt_points::VecOfVec{<:Real}, src_points::VecOfVec{<:Real},
                                 max_dofs_per_leaf::Int, precond_param::Int,
                                 trunc_param::Int, get_F, get_G, radial_fun_ranks::AbstractVector,
-                                to::TimerOutput = TimerOutput(), variance = nothing)
+                                to::TimerOutput = TimerOutput(), variance = nothing;
+                                lazy_size::Int = 1024)
 
     (max_dofs_per_leaf ≤ precond_param ||(precond_param == 0)) || throw(DomainError("max_dofs_per_leaf < precond_param"))
     n_tgt_points = length(tgt_points)
@@ -101,7 +103,7 @@ function MultipoleFactorization(kernel, tgt_points::VecOfVec{<:Real}, src_points
     symmetric = tgt_points === src_points
     fact = MultipoleFactorization(kernel, trunc_param, to,
                                 multi_to_single, normalizer_table, tree, n_tgt_points, n_src_points,
-                                get_F, get_G, radial_fun_ranks, variance, symmetric)
+                                get_F, get_G, radial_fun_ranks, variance, symmetric, lazy_size)
     @timeit fact.to "Populate transformation table" compute_transformation_mats!(fact)
     if tgt_points === src_points && precond_param > 0
         @timeit fact.to "Get diag inv for precond" compute_preconditioner!(fact, precond_param, variance)
@@ -166,8 +168,8 @@ function compute_transformation_mats!(fact::MultipoleFactorization)
     @timeit fact.to "parallel transformation_mats" begin
         @sync for leaf in fact.tree.allleaves
             if !isempty(leaf.tgt_points)
-                @spawn transformation_mats_kernel!(fact, leaf, false) # have to switch off timers if parallel
-                # transformation_mats_kernel!(fact, leaf, true) # have to switch off timers if parallel
+                # @spawn transformation_mats_kernel!(fact, leaf, false) # have to switch off timers if parallel
+                transformation_mats_kernel!(fact, leaf, true) # have to switch off timers if parallel
             end
         end
     end
@@ -185,9 +187,13 @@ function transformation_mats_kernel!(fact::MultipoleFactorization, leaf, timeit:
     leaf.near_indices = src_indices
 
     if timeit
-        @timeit fact.to "get near mat" leaf.near_mat = fact.kernel.(tgt_points, permutedims(src_points))
+        @timeit fact.to "get near mat" begin
+            G = gramian(fact.kernel, tgt_points, src_points)
+            leaf.near_mat = prod(size(G)) > fact.lazy_size^2 ? G : Matrix(G)
+        end
     else
-        leaf.near_mat = fact.kernel.(tgt_points, permutedims(src_points)) # IDEA: make lazy if they are too large?
+        G = gramian(fact.kernel, tgt_points, src_points)
+        leaf.near_mat = prod(size(G)) > fact.lazy_size^2 ? G : Matrix(G)
     end
 
     if issymmetric(fact) # if target and source are equal,

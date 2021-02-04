@@ -16,6 +16,8 @@ using TaylorSeries
 
 using TimerOutputs
 
+using CovarianceFunctions
+
 export MultipoleFactorization
 export fkt # fast kernel transform
 

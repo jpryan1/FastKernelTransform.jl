@@ -79,12 +79,12 @@ for k in eachindex(max_dofs_per_leaf)
                 K = FmmMatrix(kernel, points, mdpl, precond_param, trunc_param, to)
                 bench = @benchmarkable fkt($K)
                 factor_times[exp_i, i, j, k] = minimum(run(bench, samples = 1)).time
-                println("factor ",factor_times[exp_i, i, j, k] /nano )
+                println("factor ",factor_times[exp_i, i, j, k] / nano )
                 # fast multiply benchmark
                 F = fkt(K)
                 bench = @benchmarkable mul!($b, $F, $y)
                 fast_times[exp_i, i, j, k] = minimum(run(bench, samples = 1)).time
-                println("fast ",fast_times[exp_i, i, j, k] /nano )
+                println("fast ",fast_times[exp_i, i, j, k] / nano )
 
                 if n ≤ 2^14
                     # lazy multiply benchmark
