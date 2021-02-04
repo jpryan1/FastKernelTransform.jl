@@ -123,7 +123,7 @@ function find_farthest(far_pt, pts)
     max_dist = 0
     cur_farthest = far_pt
     for p in pts
-        dist = difference(p, far_pt))
+        dist = difference(p, far_pt)
         if dist > max_dist
             max_dist = dist
             cur_farthest = p
