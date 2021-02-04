@@ -118,12 +118,12 @@ function compute_near_far_nodes!(bt)
 end
 
 
-# using CovarianceFunctions: difference
+using CovarianceFunctions: difference
 function find_farthest(far_pt, pts)
     max_dist = 0
     cur_farthest = far_pt
     for p in pts
-        dist = norm(p-far_pt) # difference(p, far_pt))
+        dist = difference(p, far_pt))
         if dist > max_dist
             max_dist = dist
             cur_farthest = p
@@ -170,9 +170,15 @@ function rec_split!(bt, node)
       best_d = d
     end
   end
-
-  _, best_d = findmax(node.sidelens)
-
+  uneven = false
+  for d in 2:node.dimension
+    if node.sidelens[d] != node.sidelens[d-1]
+      uneven=true
+    end
+  end
+  if uneven
+    _, best_d = findmax(node.sidelens)
+  end
   splitter_normal = zeros(node.dimension)
   splitter_normal[best_d] = 1
   node.splitter_normal = splitter_normal
@@ -290,17 +296,18 @@ function initialize_tree(tgt_points, src_points, max_dofs_per_leaf, outgoing_len
   # println("Avg leaf_points ", tot_leaf_points/length(bt.allleaves))
   return bt
 end
-
-
-# N=2000
+#
+#
+# N=3000
 # dimension = 2
-# max_dofs_per_leaf = 100
+# max_dofs_per_leaf = 25
 # # points  = [randn(dimension) for i in 1:N]  #
 # points = [rand() > 0.5 ? randn(dimension) : 3*ones(dimension)+randn(dimension) for i in 1:N]
-# bt = initialize_tree(points, points, max_dofs_per_leaf, 0, 1.1)
-
-# scatter([pt[1] for pt in points], [pt[2] for pt in points], markersize = 2.2, color = "sky blue", markerstrokewidth=0)
+# bt = initialize_tree(points, points, max_dofs_per_leaf, 0, 1.4)
+# circ = Shape(Plots.partialcircle(0, 2π))
 #
+# scatter([pt[1] for pt in points], [pt[2] for pt in points],
+#   markerstrokecolor = nothing, markershape = circ, color="hot pink")
 # for node in bt.allnodes
 #   if isleaf(node) continue end
 #   split = [-node.splitter_normal[2], node.splitter_normal[1]]
@@ -327,21 +334,23 @@ end
 #   end
 #   endpt_L = node.center + node_rad_L * split
 #   endpt_R = node.center + node_rad_R * split
-#   plot!([endpt_L[1],endpt_R[1]], [endpt_L[2],endpt_R[2]], width=3 , color="brown")
+#   plot!([endpt_L[1],endpt_R[1]], [endpt_L[2],endpt_R[2]], width=3 , color="dark green")
 # end
 #
-# leaf = bt.allleaves[3]
-# leafrad = maximum([norm(pt-leaf.center) for pt in leaf.tgt_points])
+# leaf = bt.allleaves[15]
+# leafrad = sqrt(sum((leaf.sidelens ./ 2) .^ 2))
 # # x(t) = cos(t)*leafrad + leaf.center[1]
 # # y(t) = sin(t)*leafrad + leaf.center[2]
 # # plot!(x, y, 0, 2pi, linewidth=4, color="black")
-# x2(t) = 1.5*cos(t)*leafrad + leaf.center[1]
-# y2(t) = 1.5*sin(t)*leafrad + leaf.center[2]
+# x2(t) = 1.4*cos(t)*leafrad + leaf.center[1]
+# y2(t) = 1.4*sin(t)*leafrad + leaf.center[2]
 # plot!(x2, y2, 0, 2pi, linewidth=4, color="black")
 # # plot!( ylim=(-2,5), xlim=(-2,5), legend=false, ticks=false)
 # plot!(legend=false, ticks=false)
-# plot!(xlim=(-3,3), ylim=(-3,3),size = (700,400))
-# gui()
-# plot!( ylim=(0,1), xlim=(0,1), legend=false, ticks=false)
+# # plot!(xlim=(-5,8), ylim=(-5,8),size = (700,700))
+# plot!(xlim=(-2,5), ylim=(-2,5),size = (700,700))
+# plot!(axis=nothing, foreground_color_subplot=colorant"white")
+# # gui()
+# # plot!( ylim=(0,1), xlim=(0,1), legend=false, ticks=false)
 # savefig("domain.pdf")
 # end
