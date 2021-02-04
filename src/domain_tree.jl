@@ -188,7 +188,7 @@ function rec_split!(bt, node)
   node.right_child = right_node
 
   if length(left_points) > bt.max_dofs_per_leaf
-    rec_split!(bt, left_node)
+    rec_split!(bt, left_node) # IDEA: parallelize
   end
   if length(right_points) > bt.max_dofs_per_leaf
     rec_split!(bt, right_node)

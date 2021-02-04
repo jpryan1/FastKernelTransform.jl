@@ -244,7 +244,7 @@ function outgoing2incoming(fact::MultipoleFactorization, recentered_tgt::Abstrac
     max_length_multi = max_num_multiindices(d, fact.trunc_param)
     hyp_harms = zeros(Complex{Float64}, n, max_length_multi) # pre-allocating
     denoms = similar(norms)
-    for k in 0:fact.trunc_param
+    for k in 0:fact.trunc_param # IDEA: parallel?
         if timeit
             @timeit fact.to "multiindices" multiindices = get_multiindices(d, k)
             @timeit fact.to "hyperharms" begin
