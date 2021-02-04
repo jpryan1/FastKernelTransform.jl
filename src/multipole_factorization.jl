@@ -81,6 +81,13 @@ function MultipoleFactorization(kernel, tgt_points::VecOfVec{<:Real}, src_points
                            trunc_param, get_F, get_G, radial_fun_ranks, to, variance)
 end
 
+function lazy_size_heuristic(tgt_points::VecOfVec{<:Real}, src_points::VecOfVec{<:Real})
+    return 0
+    # if length(tgt_points) * length(src_points) > 50000^2 # if data gets too large, always use lazy evaluation of near field
+    #     lazy_size = 0
+    # end
+end
+
 # const lazy_size_init = 1024
 # takes arbitrary isotropic kernel
 # IDEA: convert points to vector of static arrays, dispatch 2d (and 1d) implementation on its type!
@@ -89,10 +96,7 @@ function MultipoleFactorization(kernel, tgt_points::VecOfVec{<:Real}, src_points
                                 max_dofs_per_leaf::Int, precond_param::Int,
                                 trunc_param::Int, get_F, get_G, radial_fun_ranks::AbstractVector,
                                 to::TimerOutput = TimerOutput(), variance = nothing;
-                                lazy_size::Int = 4096)
-    if length(tgt_points) * length(src_points) > 50000^2 # if data gets too large, always use lazy evaluation of near field
-        lazy_size = 0
-    end
+                                lazy_size::Int = lazy_size_heuristic(tgt_points, src_points))
     (max_dofs_per_leaf ≤ precond_param ||(precond_param == 0)) || throw(DomainError("max_dofs_per_leaf < precond_param"))
     n_tgt_points = length(tgt_points)
     n_src_points = length(src_points)
@@ -155,7 +159,7 @@ function compute_preconditioner!(fact::MultipoleFactorization, precond_param::In
  end
 
 using LinearAlgebra: checksquare
-
+# TODO: fix this for lazy K! only need to define multiply
 diagonal_correction!(K::AbstractMatrix, variance::Nothing, indices) = nothing
 function diagonal_correction!(K::AbstractMatrix, variance::AbstractVector, indices)
     (checksquare(K) == length(indices)) || throw(DimensionMismatch("checksquare(K) = $(checksquare(K)) ≠ $(length(indices)) = length(indices)"))
@@ -177,9 +181,9 @@ function compute_transformation_mats!(fact::MultipoleFactorization)
     end
 end
 
-# computational kernel of transformation mats that is run in parallel
 function transformation_mats_kernel!(fact::MultipoleFactorization, leaf, timeit::Bool = true)
     num_multipoles = length(keys(fact.multi_to_single))
+    T = Float64 # TODO: make this more generic
 
     tgt_points = leaf.tgt_points
     src_points = leaf.src_points
@@ -204,37 +208,46 @@ function transformation_mats_kernel!(fact::MultipoleFactorization, leaf, timeit:
         diagonal_correction!(A, fact.variance, leaf.tgt_point_indices)
     end
 
-    leaf.o2i = Vector{Matrix{Float64}}(undef, length(leaf.far_nodes))
     tot_far_points = get_tot_far_points(leaf)
     m = length(leaf.tgt_point_indices)
-    for far_node_idx in eachindex(leaf.far_nodes) # IDEA: parallelize?
-        far_node = leaf.far_nodes[far_node_idx]
-        if isempty(far_node.src_points) continue end
-        src_points = far_node.src_points
-        if (num_multipoles * (m + tot_far_points)) < (m * tot_far_points)
+    if (num_multipoles * (m + tot_far_points)) < (m * tot_far_points) # only use multipoles if it is efficient
+        leaf.o2i = Vector{Matrix{Complex{T}}}(undef, length(leaf.far_nodes)) # TODO: separate this out as function for readability
+        for far_node_idx in eachindex(leaf.far_nodes) # IDEA: parallelize?
+            far_node = leaf.far_nodes[far_node_idx]
+            if isempty(far_node.src_points) continue end
+            src_points = far_node.src_points
             center(x) = x - far_node.center
             recentered_tgt = center.(tgt_points)
             recentered_src = center.(src_points)
-            if isempty(far_node.s2o)
-                if timeit
-                    @timeit fact.to "source2outgoing" far_node.s2o = source2outgoing(fact, recentered_src)
-                else
-                    far_node.s2o = source2outgoing(fact, recentered_src, timeit)
-                end
-            end
             if timeit
+                if isempty(far_node.s2o)
+                    @timeit fact.to "source2outgoing" far_node.s2o = source2outgoing(fact, recentered_src)
+                end
                 @timeit fact.to "outgoing2incoming" leaf.o2i[far_node_idx] = outgoing2incoming(fact, recentered_tgt)
             else
+                if isempty(far_node.s2o)
+                    far_node.s2o = source2outgoing(fact, recentered_src, timeit)
+                end
                 leaf.o2i[far_node_idx] = outgoing2incoming(fact, recentered_tgt, timeit)
             end
-        else
+        end
+    else
+        leaf.o2i = Vector{AbstractMatrix}(undef, length(leaf.far_nodes))
+        for far_node_idx in eachindex(leaf.far_nodes) # IDEA: parallelize?
+            far_node = leaf.far_nodes[far_node_idx]
+            if isempty(far_node.src_points) continue end
             if timeit
-                @timeit fact.to "dense outgoing2incoming" leaf.o2i[far_node_idx] = fact.kernel.(leaf.tgt_points, permutedims(far_node.src_points))
+                @timeit fact.to "dense outgoing2incoming" begin
+                    G = gramian(fact.kernel, leaf.tgt_points, far_node.src_points)
+                    leaf.o2i[far_node_idx] = prod(size(G)) > fact.lazy_size^2 ? G : Matrix(G)
+                end
             else
-                leaf.o2i[far_node_idx] = fact.kernel.(leaf.tgt_points, permutedims(far_node.src_points)) # IDEA: also lazy? would need different typing for o2i!
+                G = gramian(fact.kernel, leaf.tgt_points, far_node.src_points)
+                leaf.o2i[far_node_idx] = prod(size(G)) > fact.lazy_size^2 ? G : Matrix(G)
             end
         end
     end
+    return fact
 end
 
 # IDEA: adaptive trunc_param, based on distance?

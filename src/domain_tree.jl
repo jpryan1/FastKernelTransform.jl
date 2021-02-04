@@ -11,7 +11,7 @@ mutable struct BallNode{PT<:AbstractVector{<:AbstractVector{<:Real}},
                       #MT<:AbstractMatrix{<:Real},
                       DT,
                       ST<:AbstractMatrix{<:Number},
-                      OIT<:AbstractVector{<:AbstractMatrix{<:Number}},
+                      # OIT<:AbstractVector{AbstractMatrix{<:Number}},
                       CT}
     is_precond_node::Bool  # is Node whose diag block is inv'd for precond TODO may be unnecessary
     dimension::Int
@@ -27,7 +27,7 @@ mutable struct BallNode{PT<:AbstractVector{<:AbstractVector{<:Real}},
     diag_block::DT
     # Below are source2outgoing and outgoing2incoming mats, created at factor time
     s2o::ST
-    o2i::OIT
+    o2i::AbstractVector # {AbstractMatrix{<:Number}} # TODO: think about how to handle lazy / dense matrices elegantly
     left_child # can be BallNode or Nothing
     right_child # can be BallNode or Nothing
     parent # can be BallNode or Nothing
@@ -44,7 +44,7 @@ function BallNode(isprecond::Bool, dimension::Int, ctr::AbstractVector{<:Real},
   near_indices = zeros(Int, 0)
   neighbors = Vector(undef, 0)
   far_nodes = Vector(undef, 0)
-  # T = eltype(tgt_points[1]) #TODO get type someway else
+  # T = eltype(tgt_points[1]) # TODO get type someway else
   outgoing = zeros(Complex{Float64}, outgoing_length)
   near_mat = zeros(0, 0)
   diag_block = cholesky(zeros(0, 0), Val(true), check = false) # TODO this forces the DT type in NodeData to be a Cholesky, should it?
@@ -88,7 +88,7 @@ end
 function compute_near_far_nodes!(bt)
   for leaf in bt.allleaves
     pts = vcat(leaf.tgt_points, leaf.src_points)
-    leafrad = sqrt(sum((leaf.sidelens ./ 2) .^ 2))
+    leafrad = norm(leaf.sidelens)
     cur_node = bt.root
     node_queue = [bt.root]
     while length(node_queue) > 0
@@ -247,8 +247,6 @@ end
 function heuristic_neighbor_scale(dimension::Int)
     if dimension == 2
       return 3
-    elseif dimension == 3
-      return 1.2
     else
       return max(1, 3 / sqrt(dimension))
     end

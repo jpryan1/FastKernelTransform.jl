@@ -50,22 +50,22 @@ function mul!(y::AbstractVector, fact::MultipoleFactorization, x::AbstractVector
     return y
 end
 
-# fallback for complex target
-function multiply_helper!(yi::AbstractVector{<:Complex}, o2i::AbstractMatrix, xi::AbstractVector, α::Real)
+# fallback
+function multiply_helper!(yi::AbstractVector, o2i::AbstractMatrix, xi::AbstractVector, α::Real)
     mul!(yi, o2i, xi, α, 1) # yi is mathematically real
 end
 # only carries out relevant MVMs if target is real
 # o2i is complex
-function multiply_helper!(yi::AbstractVector{<:Real}, o2i::AbstractMatrix, xi::AbstractVector, α::Real)
+function multiply_helper!(yi::AbstractVector{<:Real}, o2i::AbstractMatrix{<:Complex}, xi::AbstractVector{<:Real}, α::Real)
     Re, Im = real_imag_views(o2i)
-    if eltype(xi) <: Real
-        mul!(yi, Re, xi, α, 1)
-    else
-        re_xi, im_xi = real_imag_views(xi)
-        mul!(yi, Re, re_xi, α, 1)
-        mul!(yi, Im, im_xi, -α, 1)
-    end
-    return yi
+    mul!(yi, Re, xi, α, 1)
+end
+
+function multiply_helper!(yi::AbstractVector{<:Real}, o2i::AbstractMatrix{<:Complex}, xi::AbstractVector{<:Complex}, α::Real)
+    Re, Im = real_imag_views(o2i)
+    re_xi, im_xi = real_imag_views(xi)
+    mul!(yi, Re, re_xi, α, 1)
+    mul!(yi, Im, im_xi, -α, 1)
 end
 
 # makes sure sizes of arguments for matrix multiplication agree
