@@ -34,8 +34,8 @@ f["generators"] = gen_names
 
 precond_param     = 0  # Size of diag blocks to inv for preconditioner
 trunc_param = 4
-max_dofs_per_leaf_multiplier = [0.5, 1]  # When to stop in tree decomposition
-max_dofs_fun(p, d) = 4binomial(p + d, d)
+max_dofs_per_leaf_multiplier = [1,2]  # When to stop in tree decomposition
+max_dofs_fun(p, d) = 2binomial(p + d, d)
 f["max_dofs_per_leaf"] = "functional"
 
 nexperiments = 3 # number of different random datasets for each size
@@ -53,9 +53,9 @@ kernel = Exp()
 f["precond_param"] = precond_param
 f["trunc_param"] = trunc_param
 
-factor_times = zeros(nexperiments, length(sizes), length(dimensions), length(max_dofs_per_leaf))
-fast_times = zeros(nexperiments, length(sizes), length(dimensions), length(max_dofs_per_leaf))
-lazy_times = zeros(nexperiments, length(sizes), length(dimensions), length(max_dofs_per_leaf))
+factor_times = zeros(nexperiments, length(sizes), length(dimensions), length(max_dofs_per_leaf_multiplier))
+fast_times = zeros(nexperiments, length(sizes), length(dimensions), length(max_dofs_per_leaf_multiplier))
+lazy_times = zeros(nexperiments, length(sizes), length(dimensions), length(max_dofs_per_leaf_multiplier))
 # dense_times = zeros(nexperiments, length(sizes), length(dimensions), length(generators))
 
 gen = gm_data
