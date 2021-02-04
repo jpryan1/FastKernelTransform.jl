@@ -206,11 +206,11 @@ function transformation_mats_kernel!(fact::MultipoleFactorization, leaf, timeit:
 
     leaf.o2i = Vector{Matrix{Float64}}(undef, length(leaf.far_nodes))
     tot_far_points = get_tot_far_points(leaf)
+    m = length(leaf.tgt_point_indices)
     for far_node_idx in eachindex(leaf.far_nodes) # IDEA: parallelize?
         far_node = leaf.far_nodes[far_node_idx]
         if isempty(far_node.src_points) continue end
         src_points = far_node.src_points
-        m = length(leaf.tgt_point_indices)
         if (num_multipoles * (m + tot_far_points)) < (m * tot_far_points)
             center(x) = x - far_node.center
             recentered_tgt = center.(tgt_points)

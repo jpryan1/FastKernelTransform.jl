@@ -187,10 +187,10 @@ function rec_split!(bt, node)
   node.left_child = left_node
   node.right_child = right_node
 
-  if length(left_points) > bt.max_dofs_per_leaf
+  if length(left_points) > 2bt.max_dofs_per_leaf
     rec_split!(bt, left_node) # IDEA: parallelize
   end
-  if length(right_points) > bt.max_dofs_per_leaf
+  if length(right_points) > 2bt.max_dofs_per_leaf
     rec_split!(bt, right_node)
   end
 end
@@ -209,7 +209,7 @@ function initialize_tree(tgt_points, src_points, max_dofs_per_leaf, outgoing_len
   allnodes = [root]
   allleaves = fill(root, 0)
   bt = Tree(dimension, root, max_dofs_per_leaf, allnodes, allleaves, neighbor_scale)
-  if (length(tgt_points) + length(src_points)) > max_dofs_per_leaf
+  if (length(tgt_points) + length(src_points)) > 2max_dofs_per_leaf
     rec_split!(bt, root)
   end
 
@@ -224,16 +224,21 @@ function initialize_tree(tgt_points, src_points, max_dofs_per_leaf, outgoing_len
   # tot_far = 0
   # tot_leaf_points = 0
   # for leaf in bt.allleaves
-  #   tot_leaf_points += length(leaf.points)
+  #   tot_leaf_points += length(leaf.tgt_points)
   #   tot_far += length(leaf.far_nodes)
   # end
+  # vec = [length(node.tgt_points) for node in bt.allleaves]
   # println("Num leaves ", length(bt.allleaves))
   # println("Num nodes ", length(bt.allnodes))
   # println("Avg far ", tot_far/length(bt.allleaves))
+  # println("Mean points ", mean(vec))
+  # println("Median points ", median(vec))
+  # println("Minimum points ", minimum(vec))
+  # println("Maximum points ", maximum(vec))
   # println("Avg leaf_points ", tot_leaf_points/length(bt.allleaves))
   return bt
 end
-#
+
 # N=2000
 # dimension = 2
 # max_dofs_per_leaf = 100

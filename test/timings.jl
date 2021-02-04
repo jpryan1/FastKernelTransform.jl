@@ -7,23 +7,23 @@ using TimerOutputs
 # Create the timer object
 to = TimerOutput()
 
-N                 = 2*8192  # Number of points
-max_dofs_per_leaf = 512  # When to stop in tree decomposition
+N                 = 16000  # Number of points
+max_dofs_per_leaf = 140  # When to stop in tree decomposition
 precond_param     = 0  # Size of diag blocks to inv for preconditioner
 
-trunc_param = 5
+trunc_param = 4
 dimension   = 3
 
 # Parameter used for Gegenbauer polynomials
 alpha = dimension/2 - 1
 
 # Lookup table for transformation coefficients
-# σ = .25
-# c = 8
-# data_generator(n, d) = gaussian_mixture_data(n, c, d, σ)
-# points = data_generator(N, dimension)
+σ = .25
+c = 10
+data_generator(n, d) = gaussian_mixture_data(n, c, d, σ)
+points = data_generator(N, dimension)
 # points = uniform_data(N, dimension)
-points = two_bump_data(N, dimension)
+# points = [two_bump_data(N, dimension)
 
 # define kernel
 using CovarianceFunctions
