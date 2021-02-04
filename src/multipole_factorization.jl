@@ -90,7 +90,9 @@ function MultipoleFactorization(kernel, tgt_points::VecOfVec{<:Real}, src_points
                                 trunc_param::Int, get_F, get_G, radial_fun_ranks::AbstractVector,
                                 to::TimerOutput = TimerOutput(), variance = nothing;
                                 lazy_size::Int = 4096)
-
+    if length(tgt_points) * length(src_points) > 50000^2 # if data gets too large, always use lazy evaluation of near field
+        lazy_size = 0
+    end
     (max_dofs_per_leaf ≤ precond_param ||(precond_param == 0)) || throw(DomainError("max_dofs_per_leaf < precond_param"))
     n_tgt_points = length(tgt_points)
     n_src_points = length(src_points)
@@ -229,7 +231,7 @@ function transformation_mats_kernel!(fact::MultipoleFactorization, leaf, timeit:
             if timeit
                 @timeit fact.to "dense outgoing2incoming" leaf.o2i[far_node_idx] = fact.kernel.(leaf.tgt_points, permutedims(far_node.src_points))
             else
-                leaf.o2i[far_node_idx] = fact.kernel.(leaf.tgt_points, permutedims(far_node.src_points)) # IDEA: also lazy?
+                leaf.o2i[far_node_idx] = fact.kernel.(leaf.tgt_points, permutedims(far_node.src_points)) # IDEA: also lazy? would need different typing for o2i!
             end
         end
     end
