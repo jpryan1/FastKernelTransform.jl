@@ -20,10 +20,13 @@ alpha = dimension/2 - 1
 # Lookup table for transformation coefficients
 σ = .25
 c = 10
-data_generator(n, d) = gaussian_mixture_data(n, c, d, σ)
+data_generator(n, d) = gaussian_mixture_data(n, c, 3, σ)
 points = data_generator(N, dimension)
-# points = uniform_data(N, dimension)
-# points = [two_bump_data(N, dimension)
+A = rand(dimension, dimension)
+Q, R = qr(A)
+points = [Q*(vcat(point, zeros(dimension-3))) for point in points]
+
+
 
 # define kernel
 using CovarianceFunctions
