@@ -139,9 +139,15 @@ function rec_split!(bt, node)
   #
   # node.splitter_normal = splitter_normal
   min_split_dif = length(node.tgt_points) + length(node.src_points)
-  best_d = 1
-
+  max_sidelen = maximum(node.sidelens)
+  candidate_dims = []
   for d in 1:node.dimension
+    if(node.sidelens[d] == max_sidelen)
+      push!(candidate_dims, d)
+    end
+  end
+  best_d = candidate_dims[1]
+  for d in candidate_dims
     candidate_splitter = zeros(node.dimension)
     candidate_splitter[d] = 1
     right = 0
@@ -167,15 +173,7 @@ function rec_split!(bt, node)
       best_d = d
     end
   end
-  uneven = false
-  for d in 2:node.dimension
-    if node.sidelens[d] != node.sidelens[d-1]
-      uneven=true
-    end
-  end
-  if uneven
-    _, best_d = findmax(node.sidelens)
-  end
+
   splitter_normal = zeros(node.dimension)
   splitter_normal[best_d] = 1
   node.splitter_normal = splitter_normal
