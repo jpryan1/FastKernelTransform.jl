@@ -1,6 +1,7 @@
 # module tree
 # using Plots
 # using LinearAlgebra
+# using Random
 # using Statistics
 # This struct stores domain tree nodes' data, including anything that makes
 # matvec'ing faster due to precomputation and storage at factor time
@@ -84,34 +85,30 @@ function plane_intersects_sphere(plane_center, splitter_normal,
 end
 
 
+function radius(node)
+  return norm(node.sidelens)/2
+end
+
 # Compute neighbor lists (note: ONLY FOR LEAVES at this time)
 function compute_near_far_nodes!(bt)
   for leaf in bt.allleaves
     pts = vcat(leaf.tgt_points, leaf.src_points)
-    leafrad = norm(leaf.sidelens)
+    leafrad = radius(leaf)
     cur_node = bt.root
     node_queue = [bt.root]
     while length(node_queue) > 0
       cur_node = pop!(node_queue)
-      if isleaf(cur_node)
+      sep = norm(cur_node.center-leaf.center) > (radius(cur_node)+leafrad)
+      ratio = radius(cur_node)/(norm(cur_node.center-leaf.center)-leafrad)
+      if sep && ratio < bt.neighbor_scale
+        push!(leaf.far_nodes, cur_node)
+      elseif isleaf(cur_node)
         if cur_node != leaf
           push!(leaf.neighbors, cur_node)
         end
       else
-        intersected = plane_intersects_sphere(cur_node.center,
-                        cur_node.splitter_normal, leaf.center, bt.neighbor_scale*leafrad)
-        if intersected
-          push!(node_queue, cur_node.left_child)
-          push!(node_queue, cur_node.right_child)
-        else
-          if dot(leaf.center-cur_node.center, cur_node.splitter_normal) > 0
-            push!(node_queue, cur_node.right_child)
-            push!(leaf.far_nodes, cur_node.left_child)
-          else
-            push!(node_queue, cur_node.left_child)
-            push!(leaf.far_nodes, cur_node.right_child)
-          end
-        end
+        push!(node_queue, cur_node.right_child)
+        push!(node_queue, cur_node.left_child)
       end
     end
   end
@@ -260,14 +257,14 @@ function heuristic_neighbor_scale(dimension::Int)
 end
 
 function initialize_tree(tgt_points, src_points, max_dofs_per_leaf, outgoing_length::Int,
-                    neighbor_scale::Real = heuristic_neighbor_scale(length(tgt_points[1])))
+                    neighbor_scale::Real = 0.6)
 
   dimension = isempty(tgt_points) ? src_points : length(tgt_points[1])
   center = sum(vcat(tgt_points, src_points))/(length(tgt_points)+length(src_points))
-  rootrad = maximum([norm(pt-center) for pt in vcat(tgt_points, src_points)])
-
+  root_sidelen = maximum([maximum(abs.(pt-center)) for pt in vcat(tgt_points, src_points)])
   root = BallNode(false, dimension, center, tgt_points, collect(1:length(tgt_points)),
-    src_points, collect(1:length(src_points)), outgoing_length, [2rootrad/sqrt(dimension) for i in 1:dimension])
+    src_points, collect(1:length(src_points)), outgoing_length, [2.01*root_sidelen for i in 1:dimension])
+
   allnodes = [root]
   allleaves = fill(root, 0)
   bt = Tree(dimension, root, max_dofs_per_leaf, allnodes, allleaves, neighbor_scale)
@@ -286,10 +283,6 @@ function initialize_tree(tgt_points, src_points, max_dofs_per_leaf, outgoing_len
   # tot_far = 0
   # tot_leaf_points = 0
 
-  # for leaf in bt.allleaves
-  #   tot_leaf_points += length(leaf.tgt_points)
-  #   tot_far += length(leaf.far_nodes)
-  # end
   # vec = [length(node.tgt_points) for node in bt.allleaves]
   # println("Num leaves ", length(bt.allleaves))
   # println("Num nodes ", length(bt.allnodes))
@@ -303,9 +296,10 @@ function initialize_tree(tgt_points, src_points, max_dofs_per_leaf, outgoing_len
 end
 #
 #
+# Random.seed!(4);
 # N=3000
 # dimension = 2
-# max_dofs_per_leaf = 25
+# max_dofs_per_leaf = 250
 # # points  = [randn(dimension) for i in 1:N]  #
 # points = [rand() > 0.5 ? randn(dimension) : 3*ones(dimension)+randn(dimension) for i in 1:N]
 # bt = initialize_tree(points, points, max_dofs_per_leaf, 0, 1.4)
@@ -342,20 +336,20 @@ end
 #   plot!([endpt_L[1],endpt_R[1]], [endpt_L[2],endpt_R[2]], width=3 , color="dark green")
 # end
 #
-# leaf = bt.allleaves[15]
+# leaf = bt.allleaves[5]
 # leafrad = sqrt(sum((leaf.sidelens ./ 2) .^ 2))
 # # x(t) = cos(t)*leafrad + leaf.center[1]
 # # y(t) = sin(t)*leafrad + leaf.center[2]
 # # plot!(x, y, 0, 2pi, linewidth=4, color="black")
-# x2(t) = 1.4*cos(t)*leafrad + leaf.center[1]
-# y2(t) = 1.4*sin(t)*leafrad + leaf.center[2]
+# x2(t) = (3/sqrt(3))*cos(t)*leafrad + leaf.center[1]
+# y2(t) = (3/sqrt(3))*sin(t)*leafrad + leaf.center[2]
 # plot!(x2, y2, 0, 2pi, linewidth=4, color="black")
 # # plot!( ylim=(-2,5), xlim=(-2,5), legend=false, ticks=false)
 # plot!(legend=false, ticks=false)
 # # plot!(xlim=(-5,8), ylim=(-5,8),size = (700,700))
 # plot!(xlim=(-2,5), ylim=(-2,5),size = (700,700))
 # plot!(axis=nothing, foreground_color_subplot=colorant"white")
-# # gui()
+# gui()
 # # plot!( ylim=(0,1), xlim=(0,1), legend=false, ticks=false)
-# savefig("domain.pdf")
+# # savefig("domain.pdf")
 # end
