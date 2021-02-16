@@ -1,8 +1,3 @@
-# module tree
-# using Plots
-# using LinearAlgebra
-# using Random
-# using Statistics
 # This struct stores domain tree nodes' data, including anything that makes
 # matvec'ing faster due to precomputation and storage at factor time
 mutable struct BallNode{PT<:AbstractVector{<:AbstractVector{<:Real}},
@@ -231,20 +226,20 @@ function rec_split!(bt, node)
     push!(bt.allnodes, right_node)
     node.left_child = left_node
     node.right_child = right_node
-    # if length(left_points) > 2bt.max_dofs_per_leaf
-    #     rec_split!(bt, left_node)
-    # end
-    # if length(right_points) > 2bt.max_dofs_per_leaf
-    #     rec_split!(bt, right_node)
-    # end
-    @sync begin
-        if length(left_points) > 2bt.max_dofs_per_leaf
-            @spawn rec_split!(bt, left_node)
-        end
-        if length(right_points) > 2bt.max_dofs_per_leaf
-            @spawn rec_split!(bt, right_node)
-        end
+    if length(left_points) > 2bt.max_dofs_per_leaf
+        rec_split!(bt, left_node)
     end
+    if length(right_points) > 2bt.max_dofs_per_leaf
+        rec_split!(bt, right_node)
+    end
+    # @sync begin
+    #     if length(left_points) > 2bt.max_dofs_per_leaf
+    #         @spawn rec_split!(bt, left_node)
+    #     end
+    #     if length(right_points) > 2bt.max_dofs_per_leaf
+    #         @spawn rec_split!(bt, right_node)
+    #     end
+    # end
 end
 
 function heuristic_neighbor_scale(dimension::Int)

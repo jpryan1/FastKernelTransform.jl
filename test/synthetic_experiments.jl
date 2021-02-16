@@ -87,7 +87,7 @@ for k in eachindex(max_dofs_per_leaf_multiplier)
                 fast_times[exp_i, i, j, k] = minimum(run(bench, samples = 1)).time
                 println("fast ",fast_times[exp_i, i, j, k] / nano )
 
-                if n ≤ 2^14
+                if n ≤ 2^15
                     # lazy multiply benchmark
                     G = gramian(kernel, points)
                     bench = @benchmarkable mul!($bl, $G, $y)
