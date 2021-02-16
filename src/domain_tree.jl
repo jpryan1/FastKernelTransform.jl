@@ -39,8 +39,8 @@ end
 
 # constructor convenience
 function BallNode(isprecond::Bool, dimension::Int, ctr::AbstractVector{<:Real},
-                  tgt_points, tgt_point_indices::AbstractVector{<:Int},
-                  src_points, src_point_indices::AbstractVector{<:Int},
+                  tgt_points::VecOfVec{<:Real}, tgt_point_indices::AbstractVector{<:Int},
+                  src_points::VecOfVec{<:Real}, src_point_indices::AbstractVector{<:Int},
                   outgoing_length::Int, sidelens)
   near_indices = zeros(Int, 0)
   neighbors = Vector(undef, 0)
@@ -69,7 +69,6 @@ struct Tree{T<:Real, R<:BallNode, V<:AbstractVector{<:BallNode}}
     allleaves::V
     neighbor_scale::T
 end
-
 
 function isleaf(node::BallNode)
     return node.splitter_normal == nothing
@@ -120,7 +119,7 @@ function find_farthest(far_pt, pts)
     max_dist = 0
     cur_farthest = far_pt
     for p in pts
-        dist = difference(p, far_pt)
+        dist = norm(difference(p, far_pt))
         if dist > max_dist
             max_dist = dist
             cur_farthest = p
@@ -142,7 +141,7 @@ function rec_split!(bt, node)
   max_sidelen = maximum(node.sidelens)
   candidate_dims = []
   for d in 1:node.dimension
-    if(node.sidelens[d] == max_sidelen)
+    if node.sidelens[d] == max_sidelen
       push!(candidate_dims, d)
     end
   end
@@ -153,22 +152,22 @@ function rec_split!(bt, node)
     right = 0
     left = 0
     for i in eachindex(node.tgt_points)
-      pt = node.tgt_points[i]
-      if dot(pt-node.center, candidate_splitter) > 0 #TODO not dot
+      cpt = difference(node.tgt_points[i], node.center)
+      if dot(cpt, candidate_splitter) > 0 # TODO not dot
         right += 1
       else
         left += 1
       end
     end
     for i in eachindex(node.src_points)
-      pt = node.src_points[i]
-      if dot(pt-node.center, candidate_splitter) > 0
+      cpt = difference(node.src_points[i], node.center)
+      if dot(cpt, candidate_splitter) > 0
         right += 1
       else
         left += 1
       end
     end
-    if(abs(right-left) < min_split_dif)
+    if abs(right-left) < min_split_dif
       min_split_dif = abs(right-left)
       best_d = d
     end
@@ -189,7 +188,8 @@ function rec_split!(bt, node)
 
   for i in eachindex(node.tgt_points)
     pt = node.tgt_points[i]
-    if dot(pt-node.center, splitter_normal) > 0
+    cpt = difference(pt, node.center)
+    if dot(cpt, splitter_normal) > 0
       push!(right_tgt_indices, node.tgt_point_indices[i])
       push!(right_tgt_points, pt)
     else
@@ -199,7 +199,8 @@ function rec_split!(bt, node)
   end
   for i in eachindex(node.src_points)
     pt = node.src_points[i]
-    if dot(pt-node.center, splitter_normal) > 0
+    cpt = difference(pt, node.center)
+    if dot(cpt, splitter_normal) > 0
       push!(right_src_indices, node.src_point_indices[i])
       push!(right_src_points, pt)
     else
@@ -217,7 +218,7 @@ function rec_split!(bt, node)
   right_center[best_d] += (node.sidelens[best_d]/4)
 
   new_sidelens = copy(node.sidelens)
-  new_sidelens[best_d] /=2
+  new_sidelens[best_d] /= 2
 
   left_node = BallNode(false, node.dimension, left_center, left_tgt_points,
               left_tgt_indices, left_src_points, left_src_indices, length(node.outgoing),new_sidelens)
@@ -230,20 +231,20 @@ function rec_split!(bt, node)
     push!(bt.allnodes, right_node)
     node.left_child = left_node
     node.right_child = right_node
-    if length(left_points) > 2bt.max_dofs_per_leaf
-        rec_split!(bt, left_node)
-    end
-    if length(right_points) > 2bt.max_dofs_per_leaf
-        rec_split!(bt, right_node)
-    end
-    # @sync begin
-    #     if length(left_points) > 2bt.max_dofs_per_leaf
-    #         @spawn rec_split!(bt, left_node)
-    #     end
-    #     if length(right_points) > 2bt.max_dofs_per_leaf
-    #         @spawn rec_split!(bt, right_node)
-    #     end
+    # if length(left_points) > 2bt.max_dofs_per_leaf
+    #     rec_split!(bt, left_node)
     # end
+    # if length(right_points) > 2bt.max_dofs_per_leaf
+    #     rec_split!(bt, right_node)
+    # end
+    @sync begin
+        if length(left_points) > 2bt.max_dofs_per_leaf
+            @spawn rec_split!(bt, left_node)
+        end
+        if length(right_points) > 2bt.max_dofs_per_leaf
+            @spawn rec_split!(bt, right_node)
+        end
+    end
 end
 
 function heuristic_neighbor_scale(dimension::Int)
@@ -258,8 +259,8 @@ function initialize_tree(tgt_points, src_points, max_dofs_per_leaf, outgoing_len
                     neighbor_scale::Real = 0.6)
 
   dimension = isempty(tgt_points) ? src_points : length(tgt_points[1])
-  center = sum(vcat(tgt_points, src_points))/(length(tgt_points)+length(src_points))
-  root_sidelen = maximum([maximum(abs.(pt-center)) for pt in vcat(tgt_points, src_points)])
+  center = sum(vcat(tgt_points, src_points)) / (length(tgt_points) + length(src_points))
+  root_sidelen = maximum((maximum(abs, difference(pt, center)) for pt in vcat(tgt_points, src_points)))
   root = BallNode(false, dimension, center, tgt_points, collect(1:length(tgt_points)),
     src_points, collect(1:length(src_points)), outgoing_length, [2.01*root_sidelen for i in 1:dimension])
 
