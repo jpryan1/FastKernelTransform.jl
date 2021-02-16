@@ -14,7 +14,7 @@ to = TimerOutput()
 # sizes = @. 512 * 2^(1:6)
 # dimensions = [3]
 
-f = h5open("FKT_synthetic_experiments_D_scaling.h5", "w")
+f = h5open("FKT_synthetic_experiments_scaling.h5", "w")
 sizes = [25000, 50000, 100000]
 dimensions = [3, 5, 7]
 f["sizes"] = sizes
