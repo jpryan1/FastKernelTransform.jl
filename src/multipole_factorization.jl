@@ -43,7 +43,7 @@ end
 # multi_to_single: helper array, converting from (k, h, i) representation of
 # multipole coefficients to single indices into an array (for efficient
 # matrix vector products)
-struct MultipoleFactorization{K, TO<:TimerOutput, MST, NT, TT<:Tree, FT, GT, RT<:AbstractVector{Int}, VT}
+struct MultipoleFactorization{K, TO<:TimerOutput, MST, NT, TT<:ClusterDecomp, FT, GT, RT<:AbstractVector{Int}, VT}
     kernel::K
     trunc_param::Int64
     to::TO
@@ -104,7 +104,7 @@ function MultipoleFactorization(kernel, tgt_points::VecOfVec{<:Real}, src_points
     multi_to_single = get_index_mapping_table(dimension, trunc_param, radial_fun_ranks)
     @timeit to "Populate normalizer table" normalizer_table = squared_hyper_normalizer_table(dimension, trunc_param)
     outgoing_length = length(keys(multi_to_single))
-    @timeit to "Initialize tree" tree = initialize_tree(tgt_points, src_points, max_dofs_per_leaf, outgoing_length)
+    @timeit to "Initialize tree" tree = initialize_cluster_decomp(tgt_points, max_dofs_per_leaf, outgoing_length)
 
     symmetric = tgt_points === src_points
     fact = MultipoleFactorization(kernel, trunc_param, to,
@@ -142,19 +142,12 @@ end
 # For preconditioner
 function compute_preconditioner!(fact::MultipoleFactorization, precond_param::Int,
                                  variance::Union{AbstractVector, Nothing} = fact.variance)
-    node_queue = [fact.tree.root]
-    @sync while !isempty(node_queue)
-        node = pop!(node_queue)
-        if length(node.tgt_point_indices) ≤ precond_param
-            @spawn begin
-                tgt_points = node.tgt_points
-                K = fact.kernel.(tgt_points, permutedims(tgt_points)) # IDEA: can the kernel matrix be extracted from node.near_mat?
-                K = diagonal_correction!(K, variance, node.tgt_point_indices)
-                node.diag_block = cholesky!(K, Val(true), tol = 1e-7, check = false) # in-place
-            end
-        else
-            push!(node_queue, node.left_child)
-            push!(node_queue, node.right_child)
+    for node in fact.tree.allleaves
+        @spawn begin
+            tgt_points = node.tgt_points
+            K = fact.kernel.(tgt_points, permutedims(tgt_points)) # IDEA: can the kernel matrix be extracted from node.near_mat?
+            K = diagonal_correction!(K, variance, node.tgt_point_indices)
+            node.diag_block = cholesky!(K, Val(true), tol = 1e-7, check = false) # in-place
         end
     end
     return fact
@@ -207,8 +200,7 @@ function transformation_mats_kernel!(fact::MultipoleFactorization, leaf, timeit:
             far_node = leaf.far_nodes[far_node_idx]
             if isempty(far_node.src_points) continue end
             src_points = far_node.src_points
-
-            center(x) = difference(x, far_node.center) # WARNING: BOTTLENECK
+            center(x) = x-far_node.center # WARNING: BOTTLENECK
             recentered_tgt = center.(tgt_points)
             recentered_src = center.(src_points) # IDEA: move out of loop?
 

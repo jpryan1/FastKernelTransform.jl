@@ -14,7 +14,7 @@ function mul!(y::AbstractVector, fact::MultipoleFactorization, x::AbstractVector
     total_compressed = 0
     total_not_compressed = 0
 
-    @sync for node in fact.tree.allnodes # computes all multipoles
+    @sync for node in fact.tree.allleaves # computes all multipoles
         if !isempty(node.s2o)
             @spawn begin
                 x_far_src = @view x[node.src_point_indices]
@@ -118,7 +118,7 @@ end
 
 approx_inv(fact::MultipoleFactorization, b::AbstractVector) = approx_inv!(zero(b), fact, b)
 function approx_inv!(total::AbstractVector, fact::MultipoleFactorization, b::AbstractVector)
-    @sync for cell in fact.tree.allnodes
+    @sync for cell in fact.tree.allleaves
         A = cell.diag_block
         if A isa Factorization && prod(size(A)) > 0
             @spawn begin # IDEA: cell.tgt_point_indices ≡ cell.src_point_indices || throw()
