@@ -51,7 +51,7 @@ function BallNode(isprecond::Bool, dimension::Int, ctr::AbstractVector{<:Real},
            near_mat, diag_block, s2o, o2i, nothing, nothing, nothing, ctr, nothing, sidelens)
 end
 
-# calculates the total number of far points for a given leaf
+# calculates the total number of far points for a given leaf # TODO: deprecate?
 function get_tot_far_points(leaf::BallNode)
     isempty(leaf.far_nodes) ? 0 : sum(node->length(node.src_points), leaf.far_nodes)
 end
@@ -272,24 +272,29 @@ function initialize_tree(tgt_points, src_points, max_dofs_per_leaf, outgoing_len
     end
   end
   compute_near_far_nodes!(bt)
-  # num_neighbors = sum([length(node.neighbors) for node in bt.allleaves])
-  # println("Avg neighborhood: ", num_neighbors/length(bt.allleaves))
-  # tot_far = 0
-  # tot_leaf_points = 0
+  num_neighbors = sum([length(node.neighbors) for node in bt.allleaves])
+  println("Avg neighborhood: ", num_neighbors/length(bt.allleaves))
+  tot_far = 0
+  tot_near = 0
+  tot_leaf_points = 0
+  for n in bt.allleaves
+    tot_leaf_points += length(n.tgt_points)
+    tot_far += length(n.far_nodes)
+    tot_near += length(n.neighbors)
+  end
 
-  # vec = [length(node.tgt_points) for node in bt.allleaves]
-  # println("Num leaves ", length(bt.allleaves))
-  # println("Num nodes ", length(bt.allnodes))
-  # println("Avg far ", tot_far/length(bt.allleaves))
-  # println("Mean points ", mean(vec))
-  # println("Median points ", median(vec))
-  # println("Minimum points ", minimum(vec))
-  # println("Maximum points ", maximum(vec))
-  # println("Avg leaf_points ", tot_leaf_points/length(bt.allleaves))
+  vec = [length(node.tgt_points) for node in bt.allleaves]
+  println("Num leaves ", length(bt.allleaves))
+  println("Num nodes ", length(bt.allnodes))
+  println("Avg far ", tot_far/length(bt.allleaves))
+  println("Mean points ", mean(vec))
+  println("Median points ", median(vec))
+  println("Minimum points ", minimum(vec))
+  println("Maximum points ", maximum(vec))
+  println("Avg leaf_points ", tot_leaf_points/length(bt.allleaves))
   return bt
 end
-#
-#
+
 # Random.seed!(4);
 # N=3000
 # dimension = 2
