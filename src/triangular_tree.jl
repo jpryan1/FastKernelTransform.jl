@@ -83,34 +83,44 @@ function plane_intersects_sphere(plane_center, splitter_normal,
 end
 
 
+function is_ancestor_of(leaf, node)
+  cur = leaf
+  while cur.parent != nothing
+    if cur.parent == node return true end
+    cur = cur.parent
+  end
+  return false
+end
+
+
 # Compute neighbor lists (note: ONLY FOR LEAVES at this time)
 function compute_near_far_nodes!(bt)
   for leaf in bt.allleaves
-    pts = vcat(leaf.tgt_points, leaf.src_points)
-    leafrad = maximum([norm(pt-leaf.center) for pt in pts])
-    cur_node = bt.root
+    if length(leaf.tgt_points)==0 continue end
     node_queue = [bt.root]
     while length(node_queue) > 0
       cur_node = pop!(node_queue)
-      if isleaf(cur_node)
-        if cur_node != leaf
+      if cur_node == leaf continue end
+      if length(cur_node.src_points)==0 continue end
+      # Are they overlapping
+      if !isleaf(cur_node) && is_ancestor_of(cur_node, leaf)
+        push!(node_queue, cur_node.right_child)
+        push!(node_queue, cur_node.left_child)
+        continue
+      end
+
+      # Is the ratio satisfied?
+      min_r_val = minimum([norm(pt-cur_node.center) for pt in leaf.tgt_points])
+      max_rprime_val = maximum([norm(pt-cur_node.center) for pt in cur_node.src_points])
+      if(max_rprime_val/min_r_val > 0.6) # no compression here
+        if isleaf(cur_node)
           push!(leaf.neighbors, cur_node)
-        end
-      else
-        intersected = plane_intersects_sphere(cur_node.center,
-                        cur_node.splitter_normal, leaf.center, bt.neighbor_scale*leafrad)
-        if intersected
-          push!(node_queue, cur_node.left_child)
-          push!(node_queue, cur_node.right_child)
         else
-          if dot(leaf.center-cur_node.center, cur_node.splitter_normal) > 0
-            push!(node_queue, cur_node.right_child)
-            push!(leaf.far_nodes, cur_node.left_child)
-          else
-            push!(node_queue, cur_node.left_child)
-            push!(leaf.far_nodes, cur_node.right_child)
-          end
+          push!(node_queue, cur_node.right_child)
+          push!(node_queue, cur_node.left_child)
         end
+      else # compression here
+        push!(leaf.far_nodes, cur_node)
       end
     end
   end
