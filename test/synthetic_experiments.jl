@@ -4,7 +4,7 @@ using Statistics
 using BenchmarkTools
 using FastKernelTransform
 using FastKernelTransform: FmmMatrix
-using FastKernelTransform: uniform_data, gaussian_data, gaussian_mixture_data, embedded_data
+using FastKernelTransform: uniform_data, gaussian_data, gaussian_mixture_data, embedded_data, unit_hypersphere
 using CovarianceFunctions
 using TimerOutputs
 to = TimerOutput()
@@ -22,7 +22,7 @@ f["dimensions"] = dimensions
 
 σ = .2
 c = 10
-gm_data(n, d) = gaussian_mixture_data(n, c, d, σ)
+gm_data(n, d) = unit_hypersphere(n,d)
 create_group(f, "mixture parameters")
 g = f["mixture parameters"]
 g["c"] = c # number of centers
@@ -35,7 +35,7 @@ f["generators"] = gen_names
 precond_param     = 0  # Size of diag blocks to inv for preconditioner
 trunc_param = 4
 max_dofs_per_leaf_multiplier = [2]  # When to stop in tree decomposition
-max_dofs_fun(p, d) = 2binomial(p + d, d)
+max_dofs_fun(p, d) = 128 #2binomial(p + d, d)
 f["max_dofs_per_leaf"] = "functional"
 
 nexperiments = 3 # number of different random datasets for each size
@@ -82,17 +82,18 @@ for k in eachindex(max_dofs_per_leaf_multiplier)
                 factor_times[exp_i, i, j, k] = minimum(run(bench, samples = 1)).time
                 println("factor ", factor_times[exp_i, i, j, k] / nano )
                 # fast multiply benchmark
-                F = fkt(K)
-                bench = @benchmarkable mul!($b, $F, $y, verbose = $true)
-                fast_times[exp_i, i, j, k] = minimum(run(bench, samples = 1)).time
-                println("fast ",fast_times[exp_i, i, j, k] / nano )
-
-                if n ≤ 2^15
-                    # lazy multiply benchmark
-                    G = gramian(kernel, points)
-                    bench = @benchmarkable mul!($bl, $G, $y)
-                    lazy_times[exp_i, i, j, k] = minimum(run(bench, samples = 1)).time
-                end
+                # F = fkt(K)
+                # bench = @benchmarkable mul!($b, $F, $y, verbose = $true)
+                # fast_times[exp_i, i, j, k] = minimum(run(bench, samples = 1)).time
+                # println("fast ", fast_times[exp_i, i, j, k] / nano )
+                #
+                # if n ≤ 2^15
+                #     # lazy multiply benchmark
+                #     G = gramian(kernel, points)
+                #     bench = @benchmarkable mul!($bl, $G, $y)
+                #     lazy_times[exp_i, i, j, k] = minimum(run(bench, samples = 1)).time
+                #     println("lazy ", fast_times[exp_i, i, j, k] / nano )
+                # end
             end
         end
     end

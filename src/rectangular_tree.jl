@@ -51,7 +51,7 @@ function BallNode(isprecond::Bool, dimension::Int, ctr::AbstractVector{<:Real},
            near_mat, diag_block, s2o, o2i, nothing, nothing, nothing, ctr, nothing, sidelens)
 end
 
-# calculates the total number of far points for a given leaf
+# calculates the total number of far points for a given leaf # TODO: deprecate?
 function get_tot_far_points(leaf::BallNode)
     isempty(leaf.far_nodes) ? 0 : sum(node->length(node.src_points), leaf.far_nodes)
 end
@@ -83,26 +83,44 @@ function radius(node)
   return norm(node.sidelens)/2
 end
 
+function is_ancestor_of(leaf, node)
+  cur = leaf
+  while cur.parent != nothing
+    if cur.parent == node return true end
+    cur = cur.parent
+  end
+  return false
+end
+
+
 # Compute neighbor lists (note: ONLY FOR LEAVES at this time)
 function compute_near_far_nodes!(bt)
   for leaf in bt.allleaves
-    pts = vcat(leaf.tgt_points, leaf.src_points)
-    leafrad = radius(leaf)
-    cur_node = bt.root
+    if length(leaf.tgt_points)==0 continue end
     node_queue = [bt.root]
     while length(node_queue) > 0
       cur_node = pop!(node_queue)
-      sep = norm(cur_node.center-leaf.center) > (radius(cur_node)+leafrad)
-      ratio = radius(cur_node)/(norm(cur_node.center-leaf.center)-leafrad)
-      if sep && ratio < bt.neighbor_scale
-        push!(leaf.far_nodes, cur_node)
-      elseif isleaf(cur_node)
-        if cur_node != leaf
-          push!(leaf.neighbors, cur_node)
-        end
-      else
+      if cur_node == leaf continue end
+      if length(cur_node.src_points)==0 continue end
+      # Are they overlapping
+      if !isleaf(cur_node) && is_ancestor_of(cur_node, leaf)
         push!(node_queue, cur_node.right_child)
         push!(node_queue, cur_node.left_child)
+        continue
+      end
+
+      # Is the ratio satisfied?
+      min_r_val = minimum([norm(pt-cur_node.center) for pt in leaf.tgt_points])
+      max_rprime_val = maximum([norm(pt-cur_node.center) for pt in cur_node.src_points])
+      if(max_rprime_val/min_r_val > 0.6) # no compression here
+        if isleaf(cur_node)
+          push!(leaf.neighbors, cur_node)
+        else
+          push!(node_queue, cur_node.right_child)
+          push!(node_queue, cur_node.left_child)
+        end
+      else # compression here
+        push!(leaf.far_nodes, cur_node)
       end
     end
   end
@@ -272,24 +290,29 @@ function initialize_tree(tgt_points, src_points, max_dofs_per_leaf, outgoing_len
     end
   end
   compute_near_far_nodes!(bt)
-  # num_neighbors = sum([length(node.neighbors) for node in bt.allleaves])
-  # println("Avg neighborhood: ", num_neighbors/length(bt.allleaves))
-  # tot_far = 0
-  # tot_leaf_points = 0
+  num_neighbors = sum([length(node.neighbors) for node in bt.allleaves])
+  println("Avg neighborhood: ", num_neighbors/length(bt.allleaves))
+  tot_far = 0
+  tot_near = 0
+  tot_leaf_points = 0
+  for n in bt.allleaves
+    tot_leaf_points += length(n.tgt_points)
+    tot_far += length(n.far_nodes)
+    tot_near += length(n.neighbors)
+  end
 
-  # vec = [length(node.tgt_points) for node in bt.allleaves]
-  # println("Num leaves ", length(bt.allleaves))
-  # println("Num nodes ", length(bt.allnodes))
-  # println("Avg far ", tot_far/length(bt.allleaves))
-  # println("Mean points ", mean(vec))
-  # println("Median points ", median(vec))
-  # println("Minimum points ", minimum(vec))
-  # println("Maximum points ", maximum(vec))
-  # println("Avg leaf_points ", tot_leaf_points/length(bt.allleaves))
+  vec = [length(node.tgt_points) for node in bt.allleaves]
+  println("Num leaves ", length(bt.allleaves))
+  println("Num nodes ", length(bt.allnodes))
+  println("Avg far ", tot_far/length(bt.allleaves))
+  println("Mean points ", mean(vec))
+  println("Median points ", median(vec))
+  println("Minimum points ", minimum(vec))
+  println("Maximum points ", maximum(vec))
+  println("Avg leaf_points ", tot_leaf_points/length(bt.allleaves))
   return bt
 end
-#
-#
+
 # Random.seed!(4);
 # N=3000
 # dimension = 2
