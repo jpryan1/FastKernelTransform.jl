@@ -200,10 +200,9 @@ function transformation_mats_kernel!(fact::MultipoleFactorization, leaf, timeit:
             far_node = leaf.far_nodes[far_node_idx]
             if isempty(far_node.src_points) continue end
             src_points = far_node.src_points
-            center(x) = x-far_node.center # WARNING: BOTTLENECK
+            center(x) = difference(x, far_node.center) # WARNING: BOTTLENECK
             recentered_tgt = center.(tgt_points)
             recentered_src = center.(src_points) # IDEA: move out of loop?
-
             if timeit
                 if isempty(far_node.s2o)
                     @timeit fact.to "source2outgoing" begin

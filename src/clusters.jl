@@ -58,13 +58,11 @@ mutable struct ClusterDecomp
   IS_ZERO_DIST
 end
 
-
 function is_neighbor_to(A::Cluster, B::Cluster, decomp, tol::Real = 1e-9)
   recentered_B = [pt-A.center for pt in B.tgt_points]
   ratio = maximum([norm(pt) for pt in A.tgt_points])/minimum([norm(pt) for pt in recentered_B])
   return ratio > 0.6
 end
-
 
 function is_farnode_to( A::Cluster, B::Cluster, decomp, tol::Real = 1e-9)
   rad = A.center - B.center
@@ -101,46 +99,14 @@ function initialize_cluster_decomp(points, dofs_per_leaf, outgoing_length)
   cluster_centers = [points[rand(1:length(points))]]
   # First create set of centers
   max_num_clusters = length(points) / dofs_per_leaf  # this can be made smarter
-  while length(cluster_centers) < max_num_clusters
-    # Get farthest point from cluster centers
-    dist_to_farthest_point = 0
-    farthest_point = points[1]
-    cluster_counts = [0 for i in 1:length(cluster_centers)]
-    for point in points
-      closest_dist, idx = findmin([norm(point - center) for center in cluster_centers])
-      cluster_counts[idx] +=1
-      if closest_dist > dist_to_farthest_point
-        farthest_point = point
-        dist_to_farthest_point = closest_dist
-      end
-    end
-    push!(cluster_centers, farthest_point)
-  end
-  # Once centers are created, go through all points and assign to cluster
-  # with closest center
-  center_to_pt_indices = Dict()
-  center_to_pts = Dict()
-  for pt_idx in 1:length(points)
-    pt = points[pt_idx]
-    closest_center = cluster_centers[1]
-    min_dist = norm(pt-closest_center)
-    for center in cluster_centers
-      d = norm(center-pt)
-      if d < min_dist
-        min_dist = d
-        closest_center = center
-      end
-    end
-    if !haskey(center_to_pt_indices, closest_center)
-      center_to_pt_indices[closest_center] = [pt_idx]
-      center_to_pts[closest_center] = [pt]
-    else
-      push!(center_to_pt_indices[closest_center], pt_idx)
-      push!(center_to_pts[closest_center],  pt)
-    end
-  end
-  for center in cluster_centers
-    push!(clusters, Cluster(false, dimension, center_to_pts[center], center, outgoing_length, center_to_pt_indices[center]))
+  max_num_clusters = round(Int64, max_num_clusters)
+
+  # find k centers
+  cluster_centers, cluster_distances, pts_to_center = kcenters(points, max_num_clusters)
+  for (i, center) in enumerate(cluster_centers)
+    center_to_pt_indices = findall(==(i), pts_to_center) # indices of points that belong to ith center
+    center_to_pts = points[center_to_pt_indices] # points that belong to ith center
+    push!(clusters, Cluster(false, dimension, center_to_pts, center, outgoing_length, center_to_pt_indices))
   end
   decomp = ClusterDecomp(clusters, dimension, 1.5, 10)
   compute_near_far!(decomp)
@@ -159,7 +125,7 @@ function initialize_cluster_decomp(points, dofs_per_leaf, outgoing_length)
     cl_a = clusters[cl_adx]
     for cl_bdx in (cl_adx+1):length(clusters)
       cl_b = clusters[cl_bdx]
-      if(are_really_far(decomp, cl_a, cl_b))
+      if are_really_far(decomp, cl_a, cl_b)
         really_far_counter += 1
       end
     end
@@ -167,7 +133,7 @@ function initialize_cluster_decomp(points, dofs_per_leaf, outgoing_length)
   println("Of the ", binomial(length(clusters), 2), " pairs, ", really_far_counter , " are really far apart")
   return decomp
 end
-#
+
 # N=10000
 # dimension = 2
 # rad_thresh = 0.1
