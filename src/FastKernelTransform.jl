@@ -1,6 +1,7 @@
 module FastKernelTransform
 
 using LinearAlgebra
+using LinearAlgebraExtensions: difference
 using SparseArrays
 using StaticArrays
 

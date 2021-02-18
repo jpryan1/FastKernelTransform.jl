@@ -105,10 +105,10 @@ function initialize_cluster_decomp(points, dofs_per_leaf, outgoing_length)
     # Get farthest point from cluster centers
     dist_to_farthest_point = 0
     farthest_point = points[1]
-    cluster_counts = [0 for i in 1:length(cluster_centers)]
+    cluster_counts = zeros(Int, length(cluster_centers))
     for point in points
-      closest_dist, idx = findmin([norm(point - center) for center in cluster_centers])
-      cluster_counts[idx] +=1
+      closest_dist, idx = findmin([norm(difference(point, center)) for center in cluster_centers]) # difference?
+      cluster_counts[idx] += 1
       if closest_dist > dist_to_farthest_point
         farthest_point = point
         dist_to_farthest_point = closest_dist
@@ -120,12 +120,12 @@ function initialize_cluster_decomp(points, dofs_per_leaf, outgoing_length)
   # with closest center
   center_to_pt_indices = Dict()
   center_to_pts = Dict()
-  for pt_idx in 1:length(points)
+  for pt_idx in 1:length(points) # parallel and / or smarter?
     pt = points[pt_idx]
     closest_center = cluster_centers[1]
-    min_dist = norm(pt-closest_center)
+    min_dist = norm(difference(pt, closest_center))
     for center in cluster_centers
-      d = norm(center-pt)
+      d = norm(difference(center, pt))
       if d < min_dist
         min_dist = d
         closest_center = center
@@ -159,7 +159,7 @@ function initialize_cluster_decomp(points, dofs_per_leaf, outgoing_length)
     cl_a = clusters[cl_adx]
     for cl_bdx in (cl_adx+1):length(clusters)
       cl_b = clusters[cl_bdx]
-      if(are_really_far(decomp, cl_a, cl_b))
+      if are_really_far(decomp, cl_a, cl_b)
         really_far_counter += 1
       end
     end
@@ -167,7 +167,7 @@ function initialize_cluster_decomp(points, dofs_per_leaf, outgoing_length)
   println("Of the ", binomial(length(clusters), 2), " pairs, ", really_far_counter , " are really far apart")
   return decomp
 end
-#
+
 # N=10000
 # dimension = 2
 # rad_thresh = 0.1
