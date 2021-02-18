@@ -42,6 +42,11 @@ function embedded_data(data::AbstractVector{<:AbstractVector{<:Real}}, d::Int)
     return [E*x for x in data]
 end
 
+function unit_hypersphere(n::Int, d::Int)
+    data = [randn(d) for i in 1:n]
+    return [x/norm(x) for x in data]
+end
+
 function two_bump_data(n::Int, d::Int, σ::Real = .1)
     iseven(n) || throw("n ($n) is not even")
     nc = n ÷ 2
