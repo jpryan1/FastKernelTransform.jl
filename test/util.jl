@@ -33,6 +33,22 @@ using LinearAlgebra
     @test Matrix(D) ≈ MK
 end
 
+using FastKernelTransform: kcenters
+@testset "k centers clustering" begin
+    n, k, d = 128, 2, 5
+    σ = .1
+    x1 = [σ * randn(d) .+ 1 for _ in 1:n]
+    x2 = [σ * randn(d) .- 1 for _ in 1:n]
+    x = vcat(x1, x2)
+    c, d, i = kcenters(x, k)
+    @test length(c) == 2
+    isin(c) = c in x
+    @test all(isin, c) # centers are points in the data
+    @test d[1] ≈ min(norm(x[1] - c[1]), norm(x[1] - c[2]))
+    @test all(==(i[1]), i[1:n]) # first n points belong to the same cluster
+    @test all(==(i[n+1]), i[n+1:end]) # last n points belong to the same cluster
+end
+
 # TODO: tests for rational qr, doublfact, real_imag_views
 
 end

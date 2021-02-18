@@ -115,7 +115,28 @@ function real_imag_views(Z::AbstractArray{<:Complex})
     return Re, Im
 end
 
-
 ############################ miscellaneous helpers #############################
 using Combinatorics: doublefactorial
 doublefact(n::Int) = (n < 0) ? BigInt(1) : doublefactorial(n)
+
+# k centers clustering algorithm
+function kcenters(x::VecOfVec{<:Number}, k::Int)
+    n = length(x)
+    centers = fill(x[1], 0)
+    new_ind = rand(1:length(x))
+    distances = fill(Inf, n) # distances of points to closest cluster
+    indices = fill(1, n) # cluster index for each point
+    while length(centers) < k
+        push!(centers, x[new_ind]) # new center is furthest removed from old centers
+        c = centers[end] # most recently added center
+        for i in eachindex(x)
+            di = norm(difference(x[i], c))
+            if distances[i] > di
+                distances[i], indices[i] = di, length(centers)
+            end
+        end
+        new_ind = argmax(distances) # find point that is furthest away from all existing clusters
+    end
+    return centers, distances, indices
+end
+const kcenter = kcenters
