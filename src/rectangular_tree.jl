@@ -110,9 +110,11 @@ function compute_near_far_nodes!(bt)
       end
 
       # Is the ratio satisfied?
-      min_r_val = minimum([norm(pt-cur_node.center) for pt in leaf.tgt_points])
-      max_rprime_val = maximum([norm(pt-cur_node.center) for pt in cur_node.src_points])
-      if(max_rprime_val/min_r_val > 0.6) # no compression here
+      min_r_val = minimum((norm(difference(pt, cur_node.center)) for pt in leaf.tgt_points))
+      max_rprime_val = maximum((norm(difference(pt, cur_node.center)) for pt in cur_node.src_points)) # pre-compute
+      # min_r_val = norm(difference(leaf.center, cur_node.center)) - norm(leaf.sidelens)/2
+      # max_rprime_val = norm(cur_node.sidelens)/2
+      if max_rprime_val/min_r_val > 0.6 # no compression here
         if isleaf(cur_node)
           push!(leaf.neighbors, cur_node)
         else

@@ -48,9 +48,9 @@ end
 
 @testset "factorize and mul!" begin
     @testset "basic properties" begin
-        n, d = 1024, 2
+        n, d = 2048, 2
         max_dofs_per_leaf = 256 # When to stop in tree decomposition
-        precond_param     = 256  # Size of diag blocks to inv for preconditioner
+        precond_param     = 512  # Size of diag blocks to inv for preconditioner
         trunc_param = 5
         x = data_generator(n, d)
         variance = exp.(randn(n)) # additive diagonal
@@ -68,7 +68,7 @@ end
         K = gramian(k, x)
         c = K * y
         @. c += variance * y
-        @test isapprox(b, c, rtol = 1e-5)
+        @test isapprox(b, c, rtol = rtol)
     end
 
     @testset "2d" begin
