@@ -1,7 +1,7 @@
 # this is the original FastKernelTransform file, separated it out from the test suite for rapid testing
 using LinearAlgebra
 using FastKernelTransform
-using FastKernelTransform: gaussian_mixture_data, two_bump_data, uniform_data
+using FastKernelTransform: gaussian_mixture_data, two_bump_data, uniform_data, unit_hypersphere
 using TimerOutputs
 
 # Create the timer object
@@ -20,11 +20,11 @@ alpha = dimension/2 - 1
 # Lookup table for transformation coefficients
 σ = .25
 c = 10
-data_generator(n, d) = gaussian_mixture_data(n, c, 3, σ)
+data_generator(n, d) = unit_hypersphere(n, d)
 points = data_generator(N, dimension)
-A = rand(dimension, dimension)
-Q, R = qr(A)
-points = [Q*(vcat(point, zeros(dimension-3))) for point in points]
+# A = rand(dimension, dimension)
+# Q, R = qr(A)
+# points = [Q*(vcat(point, zeros(dimension-3))) for point in points]
 
 
 

@@ -18,6 +18,7 @@ mutable struct BallNode{PT<:AbstractVector{<:AbstractVector{<:Real}},
     src_point_indices::PIT
     neighbors::NT
     far_nodes::NT
+    far_leaf_points::Int
     outgoing::OT  # This is an array of multipole coefficients, created at matvec time
     near_mat::AbstractMatrix # TODO: think about how to handle lazy / dense matrices elegantly
     diag_block::DT
@@ -40,6 +41,7 @@ function BallNode(isprecond::Bool, dimension::Int, ctr::AbstractVector{<:Real},
   near_indices = zeros(Int, 0)
   neighbors = Vector(undef, 0)
   far_nodes = Vector(undef, 0)
+  far_leaf_points = 0
   # T = eltype(tgt_points[1]) # TODO get type someway else
   outgoing = zeros(Complex{Float64}, outgoing_length)
   near_mat = zeros(0, 0)
@@ -47,7 +49,7 @@ function BallNode(isprecond::Bool, dimension::Int, ctr::AbstractVector{<:Real},
   s2o = zeros(Complex{Float64}, 0, 0)
   o2i = fill(s2o, 0)
   BallNode(isprecond, dimension, tgt_points, tgt_point_indices,
-           near_indices, src_points, src_point_indices, neighbors, far_nodes, outgoing,
+           near_indices, src_points, src_point_indices, neighbors, far_nodes, far_leaf_points, outgoing,
            near_mat, diag_block, s2o, o2i, nothing, nothing, nothing, ctr, nothing, sidelens)
 end
 
@@ -114,7 +116,7 @@ function compute_near_far_nodes!(bt)
       max_rprime_val = maximum((norm(difference(pt, cur_node.center)) for pt in cur_node.src_points)) # pre-compute
       # min_r_val = norm(difference(leaf.center, cur_node.center)) - norm(leaf.sidelens)/2
       # max_rprime_val = norm(cur_node.sidelens)/2
-      if max_rprime_val/min_r_val > 0.6 # no compression here
+      if max_rprime_val/min_r_val > bt.neighbor_scale # no compression here
         if isleaf(cur_node)
           push!(leaf.neighbors, cur_node)
         else
@@ -123,6 +125,7 @@ function compute_near_far_nodes!(bt)
         end
       else # compression here
         push!(leaf.far_nodes, cur_node)
+        cur_node.far_leaf_points += length(leaf.tgt_points)
       end
     end
   end
@@ -262,16 +265,9 @@ function rec_split!(bt, node)
     # end
 end
 
-function heuristic_neighbor_scale(dimension::Int)
-    if dimension == 2
-      return 3
-    else
-      return max(1, 3 / sqrt(dimension))
-    end
-end
 
 function initialize_tree(tgt_points, src_points, max_dofs_per_leaf, outgoing_length::Int,
-                    neighbor_scale::Real = 0.6)
+                    neighbor_scale::Real = 0.75)
 
   dimension = isempty(tgt_points) ? src_points : length(tgt_points[1])
   center = sum(vcat(tgt_points, src_points)) / (length(tgt_points) + length(src_points))

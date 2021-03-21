@@ -33,8 +33,9 @@ function mul!(y::AbstractVector, fact::MultipoleFactorization, x::AbstractVector
             for far_node_idx in eachindex(leaf.far_nodes)
                 far_node = leaf.far_nodes[far_node_idx]
                 if isempty(far_node.src_points) continue end
-                m = length(leaf.tgt_points)
-                if (num_multipoles * (m + tot_far_points)) < (m * tot_far_points)
+                far_leaf_points = far_node.far_leaf_points
+                far_src_points = length(far_node.src_points)
+                if (num_multipoles * (far_src_points + far_leaf_points)) < (far_src_points * far_leaf_points) # only use multipoles if it is efficient
                     total_compressed += 1
                     xi = far_node.outgoing
                 else

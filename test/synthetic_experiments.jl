@@ -15,8 +15,8 @@ to = TimerOutput()
 # dimensions = [3]
 
 f = h5open("FKT_synthetic_experiments_scaling.h5", "w")
-sizes = collect(@. 125_000 * 2^(0:3)) # [25000, 50000, 100000]
-dimensions = collect(6:-1:3)
+sizes = collect(@. 25_000 * 2^(0:5)) # [25000, 50000, 100000]
+dimensions = collect(7:-2:3)
 f["sizes"] = sizes
 f["dimensions"] = dimensions
 
@@ -33,7 +33,7 @@ f["generators"] = gen_names
 
 precond_param     = 0  # Size of diag blocks to inv for preconditioner
 trunc_param = 4
-max_dofs_per_leaf_multiplier = [2]  # When to stop in tree decomposition
+max_dofs_per_leaf_multiplier = [ 0.5, 1, 2]  # When to stop in tree decomposition
 max_dofs_fun(p, d) = binomial(p + d, d)
 f["max_dofs_per_leaf"] = "functional"
 
@@ -63,7 +63,7 @@ for k in eachindex(max_dofs_per_leaf_multiplier)
     for j in eachindex(dimensions)
         d = dimensions[j]
         println("dim ", d)
-        mdpl = max_dofs_per_leaf_multiplier[k]*max_dofs_fun(trunc_param, d)
+        mdpl = Int(round(max_dofs_per_leaf_multiplier[k]*max_dofs_fun(trunc_param, d)))
         println("max dofs ", mdpl)
         for i in eachindex(sizes)
             n = sizes[i]
