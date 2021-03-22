@@ -104,7 +104,7 @@ function MultipoleFactorization(kernel, tgt_points::VecOfVec{<:Real}, src_points
     multi_to_single = get_index_mapping_table(dimension, trunc_param, radial_fun_ranks)
     @timeit to "Populate normalizer table" normalizer_table = squared_hyper_normalizer_table(dimension, trunc_param)
     outgoing_length = length(keys(multi_to_single))
-    @timeit to "Initialize tree" tree = initialize_tree(tgt_points, src_points, max_dofs_per_leaf, outgoing_length)
+    Base.@time tree = initialize_tree(tgt_points, src_points, max_dofs_per_leaf, outgoing_length)
 
     symmetric = tgt_points === src_points
     fact = MultipoleFactorization(kernel, trunc_param, to,
