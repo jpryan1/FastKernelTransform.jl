@@ -104,7 +104,7 @@ function MultipoleFactorization(kernel, tgt_points::VecOfVec{<:Real}, src_points
     multi_to_single = get_index_mapping_table(dimension, trunc_param, radial_fun_ranks)
     @timeit to "Populate normalizer table" normalizer_table = squared_hyper_normalizer_table(dimension, trunc_param)
     outgoing_length = length(keys(multi_to_single))
-    @timeit to "Initialize tree" tree = initialize_tree(tgt_points, src_points, max_dofs_per_leaf, outgoing_length)
+    Base.@time tree = initialize_tree(tgt_points, src_points, max_dofs_per_leaf, outgoing_length)
 
     symmetric = tgt_points === src_points
     fact = MultipoleFactorization(kernel, trunc_param, to,
@@ -199,13 +199,13 @@ function transformation_mats_kernel!(fact::MultipoleFactorization, leaf, timeit:
         leaf.near_mat = diagonal_correction!(leaf.near_mat, fact.variance, leaf.tgt_point_indices)
     end
 
-    tot_far_points = get_tot_far_points(leaf)
-    m = length(leaf.tgt_point_indices)
-    if (num_multipoles * (m + tot_far_points)) < (m * tot_far_points) # only use multipoles if it is efficient
-        leaf.o2i = Vector{AbstractMatrix{Complex{T}}}(undef, length(leaf.far_nodes)) # TODO: separate this out as function for readability
-        for far_node_idx in eachindex(leaf.far_nodes) # IDEA: parallelize?
-            far_node = leaf.far_nodes[far_node_idx]
-            if isempty(far_node.src_points) continue end
+    leaf.o2i = Vector(undef, length(leaf.far_nodes)) # TODO: separate this out as function for readability
+    for far_node_idx in eachindex(leaf.far_nodes) # IDEA: parallelize?
+        far_node = leaf.far_nodes[far_node_idx]
+        if isempty(far_node.src_points) continue end
+        far_leaf_points = far_node.far_leaf_points
+        far_src_points = length(far_node.src_points)
+        if (num_multipoles * (far_src_points + far_leaf_points)) < (far_src_points * far_leaf_points) # only use multipoles if it is efficient
             src_points = far_node.src_points
 
             center(x) = difference(x, far_node.center) # WARNING: BOTTLENECK
@@ -251,12 +251,7 @@ function transformation_mats_kernel!(fact::MultipoleFactorization, leaf, timeit:
                     leaf.o2i[far_node_idx] = generator()
                 end
             end
-        end
-    else
-        leaf.o2i = Vector{AbstractMatrix}(undef, length(leaf.far_nodes))
-        for far_node_idx in eachindex(leaf.far_nodes) # IDEA: parallelize?
-            far_node = leaf.far_nodes[far_node_idx]
-            if isempty(far_node.src_points) continue end
+        else
             if timeit
                 @timeit fact.to "dense outgoing2incoming" begin
                     G = gramian(fact.kernel, leaf.tgt_points, far_node.src_points)

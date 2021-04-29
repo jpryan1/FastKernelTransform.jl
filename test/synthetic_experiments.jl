@@ -15,8 +15,8 @@ to = TimerOutput()
 # dimensions = [3]
 
 f = h5open("FKT_synthetic_experiments_scaling.h5", "w")
-sizes = collect(@. 125_000 * 2^(0:3)) # [25000, 50000, 100000]
-dimensions = collect(6:-1:3)
+sizes = collect(@. 40_000 * 2^(0:3))
+dimensions = collect(4:-1:2)
 f["sizes"] = sizes
 f["dimensions"] = dimensions
 
@@ -63,7 +63,7 @@ for k in eachindex(max_dofs_per_leaf_multiplier)
     for j in eachindex(dimensions)
         d = dimensions[j]
         println("dim ", d)
-        mdpl = max_dofs_per_leaf_multiplier[k]*max_dofs_fun(trunc_param, d)
+        mdpl = Int(round(max_dofs_per_leaf_multiplier[k]*max_dofs_fun(trunc_param, d)))
         println("max dofs ", mdpl)
         for i in eachindex(sizes)
             n = sizes[i]
