@@ -6,7 +6,7 @@ mutable struct FmmMatrix{K, V<:AbstractVector{<:AbstractVector{<:Real}}, VT} # I
     precond_param::Int64
     trunc_param::Int64
     to::TimerOutput
-    variance::VT
+    variance::VT # TODO: can solve this simply with LazyMatrixSum in LazyLinearAlgebra
 end
 
 function FmmMatrix(kernel, tgt_points::VecOfVec{<:Real}, src_points::VecOfVec{<:Real},
