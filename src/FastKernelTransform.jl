@@ -34,5 +34,6 @@ include("multipole_factorization.jl")
 include("expansion.jl")
 include("symbolic.jl")
 include("mul.jl")
+include("gramian.jl") # defines "fkt" on gramian matrix
 
 end # module AutoFMM

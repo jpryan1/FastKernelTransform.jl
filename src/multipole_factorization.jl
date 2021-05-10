@@ -1,3 +1,8 @@
+# IDEA: define default parameters here, add to constructor definitions
+const default_max_dofs_per_leaf = 256
+const default_precond_paramt = 2default_max_dofs_per_leaf
+const default_trunc_param = 5
+
 mutable struct FmmMatrix{K, V<:AbstractVector{<:AbstractVector{<:Real}}, VT} # IDEA: use CovarianceFunctions.Gramian
     kernel::K
     tgt_points::V
@@ -43,7 +48,8 @@ end
 # multi_to_single: helper array, converting from (k, h, i) representation of
 # multipole coefficients to single indices into an array (for efficient
 # matrix vector products)
-struct MultipoleFactorization{K, TO<:TimerOutput, MST, NT, TT<:Tree, FT, GT, RT<:AbstractVector{Int}, VT}
+# TODO: add element type to Factorization
+struct MultipoleFactorization{T, K, TO<:TimerOutput, MST, NT, TT<:Tree, FT, GT, RT<:AbstractVector{Int}, VT} <: Factorization{T}
     kernel::K
     trunc_param::Int64
     to::TO
@@ -58,9 +64,10 @@ struct MultipoleFactorization{K, TO<:TimerOutput, MST, NT, TT<:Tree, FT, GT, RT<
     get_G::GT
     radial_fun_ranks::RT
 
-    variance::VT # additive diagonal correction
+    variance::VT # additive diagonal correction TODO: replace with LazyMatrixSum
     symmetric::Bool
     lazy_size::Int
+    _k::T # sample output of kernel, only here to determine element type
 end
 LinearAlgebra.issymmetric(F::MultipoleFactorization) = F.symmetric
 
@@ -105,11 +112,11 @@ function MultipoleFactorization(kernel, tgt_points::VecOfVec{<:Real}, src_points
     @timeit to "Populate normalizer table" normalizer_table = squared_hyper_normalizer_table(dimension, trunc_param)
     outgoing_length = length(keys(multi_to_single))
     Base.@time tree = initialize_tree(tgt_points, src_points, max_dofs_per_leaf, outgoing_length)
-
+    _k = kernel(tgt_points[1], src_points[1]) # sample evaluation used to determine element type
     symmetric = tgt_points === src_points
     fact = MultipoleFactorization(kernel, trunc_param, to,
                                 multi_to_single, normalizer_table, tree, n_tgt_points, n_src_points,
-                                get_F, get_G, radial_fun_ranks, variance, symmetric, lazy_size)
+                                get_F, get_G, radial_fun_ranks, variance, symmetric, lazy_size, _k)
     @timeit fact.to "Populate transformation table" compute_transformation_mats!(fact)
     if tgt_points === src_points && precond_param > 0
         @timeit fact.to "Get diag inv for precond" compute_preconditioner!(fact, precond_param, variance)
