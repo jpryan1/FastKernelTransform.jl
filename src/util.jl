@@ -15,6 +15,9 @@ LinearAlgebra.Matrix(A::LazyMultipoleMatrix) = A.generator() # instantiates matr
 function LinearAlgebra.mul!(y::AbstractVector, A::LazyMultipoleMatrix, x::AbstractVector, α::Real = 1, β::Real = 0)
     mul!(y, Matrix(A), x, α, β) # multiply
 end
+function LinearAlgebra.mul!(y::AbstractMatrix, A::LazyMultipoleMatrix, x::AbstractMatrix, α::Real = 1, β::Real = 0)
+    mul!(y, Matrix(A), x, α, β) # multiply
+end
 
 using LinearAlgebra: checksquare
 diagonal_correction!(K::AbstractMatrix, variance::Nothing, indices) = K

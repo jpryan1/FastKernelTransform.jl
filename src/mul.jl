@@ -4,30 +4,83 @@ function *(fact::MultipoleFactorization, x::AbstractVector; verbose::Bool = fals
     b = similar(x, size(fact, 1))
     mul!(b, fact, x, verbose = verbose)
 end
+function *(fact::MultipoleFactorization, X::AbstractMatrix; verbose::Bool = false)
+    B = similar(X, size(fact, 1), size(X, 2))
+    mul!(B, fact, X, verbose = verbose)
+end
 \(fact::MultipoleFactorization, b::AbstractVector) = conj_grad(fact, b)
 
+function mul!(Y::AbstractVector, A::MultipoleFactorization, X::AbstractVector,
+              α::Real = 1, β::Real = 0; verbose::Bool = false)
+    _mul!(Y, A, X, α, β, verbose = verbose)
+end
+function mul!(Y::AbstractMatrix, A::MultipoleFactorization, X::AbstractMatrix,
+              α::Real = 1, β::Real = 0; verbose::Bool = false)
+    _mul!(Y, A, X, α, β, verbose = verbose)
+end
+
+# this is not thread-safe
+# ASSUMES node.outgoing is pre-allocated
+# function mul!(y::AbstractVector, fact::MultipoleFactorization, x::AbstractVector,
+#         thread_safe::Val{false}, α::Real = 1, β::Real = 0; verbose::Bool = false)
+#     _checksizes(y, fact, x)
+#     num_multipoles = length(keys(fact.multi_to_single))
+#     total_compressed = 0
+#     total_not_compressed = 0
+#
+#     @sync for node in fact.tree.allnodes # computes all multipoles
+#         if !isempty(node.s2o)
+#             @spawn begin
+#                 x_far_src = @view x[node.src_point_indices]
+#                 mul!(node.outgoing, node.s2o, x_far_src) # WARNING: this is not thread-safe (multiply several vectors in parallel)
+#             end
+#         end
+#     end
+#
+#     @sync for leaf in fact.tree.allleaves
+#         if isempty(leaf.tgt_points) continue end
+#         @spawn begin
+#             xi = @view x[leaf.near_indices]
+#             yi = @view y[leaf.tgt_point_indices]
+#             mul!(yi, leaf.near_mat, xi, α, β) # near field interaction
+#             tot_far_points = get_tot_far_points(leaf)
+#             for far_node_idx in eachindex(leaf.far_nodes)
+#                 far_node = leaf.far_nodes[far_node_idx]
+#                 if isempty(far_node.src_points) continue end
+#                 far_leaf_points = far_node.far_leaf_points
+#                 far_src_points = length(far_node.src_points)
+#                 if (num_multipoles * (far_src_points + far_leaf_points)) < (far_src_points * far_leaf_points) # only use multipoles if it is efficient
+#                     total_compressed += 1
+#                     xi = far_node.outgoing
+#                 else
+#                     total_not_compressed += 1
+#                     xi = @view x[far_node.src_point_indices]
+#                 end
+#                 o2i = leaf.o2i[far_node_idx]
+#                 multiply_helper!(yi, o2i, xi, α)
+#             end
+#         end
+#     end
+#     verbose && println("Compressed: ",total_compressed," not compressed: ", total_not_compressed)
+#     return y
+# end
 
 # IDEA: could pass data structure that reports how many compressions took place
-function mul!(y::AbstractVector, fact::MultipoleFactorization, x::AbstractVector, α::Real = 1, β::Real = 0; verbose::Bool = false)
+function _mul!(y::AbstractVecOrMat, fact::MultipoleFactorization, x::AbstractVecOrMat,
+              α::Real = 1, β::Real = 0, thread_safe::Union{Val{true}, Val{false}} = Val(true);
+              verbose::Bool = false)
     _checksizes(y, fact, x)
     num_multipoles = length(keys(fact.multi_to_single))
     total_compressed = 0
     total_not_compressed = 0
 
-    @sync for node in fact.tree.allnodes # computes all multipoles
-        if !isempty(node.s2o)
-            @spawn begin
-                x_far_src = @view x[node.src_point_indices]
-                mul!(node.outgoing, node.s2o, x_far_src)
-            end
-        end
-    end
+    compute_multipoles!(y, fact, x, thread_safe)
 
     @sync for leaf in fact.tree.allleaves
         if isempty(leaf.tgt_points) continue end
         @spawn begin
-            xi = x[leaf.near_indices]
-            yi = @view y[leaf.tgt_point_indices]
+            xi = @view x[leaf.near_indices, :]
+            yi = @view y[leaf.tgt_point_indices, :]
             mul!(yi, leaf.near_mat, xi, α, β) # near field interaction
             tot_far_points = get_tot_far_points(leaf)
             for far_node_idx in eachindex(leaf.far_nodes)
@@ -40,7 +93,7 @@ function mul!(y::AbstractVector, fact::MultipoleFactorization, x::AbstractVector
                     xi = far_node.outgoing
                 else
                     total_not_compressed += 1
-                    xi = @view x[far_node.src_point_indices]
+                    xi = @view x[far_node.src_point_indices, :]
                 end
                 o2i = leaf.o2i[far_node_idx]
                 multiply_helper!(yi, o2i, xi, α)
@@ -51,22 +104,37 @@ function mul!(y::AbstractVector, fact::MultipoleFactorization, x::AbstractVector
     return y
 end
 
+function compute_multipoles!(y, fact, x, thread_safe::Union{Val{false}, Val{true}} = Val(true))
+    @sync for node in fact.tree.allnodes # computes all multipoles
+        if !isempty(node.s2o)
+            @spawn begin
+                x_far_src = @views x isa AbstractVector ? x[node.src_point_indices] : x[node.src_point_indices, :]
+                if thread_safe isa Val{true}
+                    node.outgoing = node.s2o * x_far_src # thread safe
+                else
+                    mul!(node.outgoing, node.s2o, x_far_src) # WARNING: this is not thread-safe (multiply several vectors in parallel)
+                end
+            end
+        end
+    end
+end
+
 # fallback
-function multiply_helper!(yi::AbstractVector, o2i::AbstractMatrix, xi::AbstractVector, α::Real)
+function multiply_helper!(yi::AbstractVecOrMat, o2i::AbstractMatrix, xi::AbstractVecOrMat, α::Real)
     mul!(yi, o2i, xi, α, 1) # yi is mathematically real
 end
 # only carries out relevant MVMs if target is real
 # o2i is complex
-function multiply_helper!(yi::AbstractVector{<:Real}, o2i::AbstractMatrix{<:Complex}, xi::AbstractVector{<:Real}, α::Real)
+function multiply_helper!(yi::AbstractVecOrMat{<:Real}, o2i::AbstractMatrix{<:Complex}, xi::AbstractVecOrMat{<:Real}, α::Real)
     Re, Im = real_imag_views(o2i)
     mul!(yi, Re, xi, α, 1)
 end
 
-function multiply_helper!(yi::AbstractVector{<:Real}, o2i::LazyMultipoleMatrix, xi::AbstractVector{<:Complex}, α::Real)
+function multiply_helper!(yi::AbstractVecOrMat{<:Real}, o2i::LazyMultipoleMatrix, xi::AbstractVecOrMat{<:Complex}, α::Real)
     multiply_helper!(yi, Matrix(o2i), xi, α)
 end
 
-function multiply_helper!(yi::AbstractVector{<:Real}, o2i::AbstractMatrix{<:Complex}, xi::AbstractVector{<:Complex}, α::Real)
+function multiply_helper!(yi::AbstractVecOrMat{<:Real}, o2i::AbstractMatrix{<:Complex}, xi::AbstractVecOrMat{<:Complex}, α::Real)
     Re, Im = real_imag_views(o2i)
     re_xi, im_xi = real_imag_views(xi)
     mul!(yi, Re, re_xi, α, 1)
@@ -74,13 +142,15 @@ function multiply_helper!(yi::AbstractVector{<:Real}, o2i::AbstractMatrix{<:Comp
 end
 
 # makes sure sizes of arguments for matrix multiplication agree
-function _checksizes(y::AbstractVector, fact::MultipoleFactorization, x::AbstractVector)
-    if size(fact, 2) ≠ length(x)
+function _checksizes(y::AbstractVecOrMat, fact::MultipoleFactorization, x::AbstractVecOrMat)
+    if size(fact, 2) ≠ size(x, 1)
         s = "second dimension of fact, $(size(fact, 2)), does not match length of x, $(length(x))"
         throw(DimensionMismatch(s))
-    elseif length(y) ≠ size(fact, 1)
+    elseif size(y, 1) ≠ size(fact, 1)
          s = "first dimension of fact, $(size(fact, 1)), does not match length of y, $(length(y))"
          throw(DimensionMismatch(s))
+    elseif size(y, 2) ≠ size(x, 2)
+        s = "second dimension of y, $(size(y, 2)), does not match second dimension of x, $(size(x, 2)))"
     end
 end
 

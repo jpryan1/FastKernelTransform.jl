@@ -28,8 +28,8 @@ ek(x, y) = ek(norm(difference(x, y)))
 FastKernelTransform.qrable(::typeof(ek)) = true
 FastKernelTransform.get_correction(::typeof(ek)) = ek
 
-atol = 1e-4
-rtol = 1e-4
+atol = 1e-3
+rtol = 1e-3
 verbose = true
 # test driver
 function fkt_test(kernels, x, y, max_dofs_per_leaf, precond_param, trunc_param,
@@ -51,7 +51,7 @@ end
         n, d = 2048, 2
         max_dofs_per_leaf = 256 # When to stop in tree decomposition
         precond_param     = 512  # Size of diag blocks to inv for preconditioner
-        trunc_param = 5
+        trunc_param = 7
         x = data_generator(n, d)
         variance = exp.(randn(n)) # additive diagonal
         k = Exp()
@@ -75,12 +75,16 @@ end
         n, d = 4096, 2
         max_dofs_per_leaf = 512 # When to stop in tree decomposition
         precond_param     = 1024  # Size of diag blocks to inv for preconditioner
-        trunc_param = 5
+        trunc_param = 7
         x = data_generator(n, d)
         y = rand(n) # Start with random data values at each point
         kernels = (ek, Cauchy())
         names = ("Exp", "Cauchy")
         fkt_test(kernels, x, y, max_dofs_per_leaf, precond_param, trunc_param, to, names)
+        # matrix-matrix multiply
+        m = 2
+        Y = rand(n, m) # Start with random data values at each point
+        fkt_test(kernels, x, Y, max_dofs_per_leaf, precond_param, trunc_param, to, names)
     end
 
     @testset "3d" begin
@@ -93,6 +97,11 @@ end
         kernels = (eq, ek, Cauchy()) # (es, eq, ek, Cauchy())
         names = ("EQ", "Exp", "Cauchy") # ["Electro", "EQ", "Exp", "Cauchy"]
         fkt_test(kernels, x, y, max_dofs_per_leaf, precond_param, trunc_param, to, names)
+
+        # matrix-matrix multiply
+        m = 2
+        Y = rand(n, m) # Start with random data values at each point
+        fkt_test(kernels, x, Y, max_dofs_per_leaf, precond_param, trunc_param, to, names)
     end
 
     @testset "rectangle" begin

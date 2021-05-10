@@ -1,9 +1,10 @@
 # This struct stores domain tree nodes' data, including anything that makes
 # matvec'ing faster due to precomputation and storage at factor time
+# IDEA: use NearestNeighbors.jl and StaticArrays to speed up tree construction
 mutable struct BallNode{PT<:AbstractVector{<:AbstractVector{<:Real}},
                       PIT<:AbstractVector{<:Int},
                       NT<:AbstractVector,
-                      OT<:AbstractVector{<:Number},
+                      # OT<:AbstractVector{<:Number},
                       #MT<:AbstractMatrix{<:Real},
                       DT,
                       # ST<:AbstractMatrix{<:Number},
@@ -19,7 +20,7 @@ mutable struct BallNode{PT<:AbstractVector{<:AbstractVector{<:Real}},
     neighbors::NT
     far_nodes::NT
     far_leaf_points::Int
-    outgoing::OT  # This is an array of multipole coefficients, created at matvec time
+    outgoing::AbstractVecOrMat{<:Number}  # This is an array of multipole coefficients, created at matvec time
     near_mat::AbstractMatrix # TODO: think about how to handle lazy / dense matrices elegantly
     diag_block::DT
     # Below are source2outgoing and outgoing2incoming mats, created at factor time
