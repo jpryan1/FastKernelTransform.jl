@@ -1,0 +1,16 @@
+using CovarianceFunctions
+function fkt(G::Gramian; max_dofs_per_leaf::Int = default_max_dofs_per_leaf,
+    precond_param::Int = default_precond_paramt, trunc_param::Int = default_trunc_param)
+    MultipoleFactorization(G.k, G.x, G.y, max_dofs_per_leaf, precond_param, trunc_param)
+end
+
+# factorize only calls fkt if it is worth it
+# TODO: need to think this over
+# function LinearAlgebra.factorize(G::Gramian{<:IsotropicKernel})
+#     if length(mat.points) < mat.max_dofs_per_leaf
+#         x = math.points
+#         return factorize(k.(x, permutedims(x)))
+#     else
+#         return fkt(mat)
+#     end
+# end
