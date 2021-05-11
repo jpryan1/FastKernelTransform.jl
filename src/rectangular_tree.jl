@@ -269,11 +269,10 @@ end
 
 
 function initialize_tree(tgt_points, src_points, max_dofs_per_leaf, outgoing_length::Int,
-                    neighbor_scale::Real = 0.75, barnes::Bool = false)
-
-  if barnes
-    neighbor_scale = 0.25
-  end
+                         neighbor_scale::Real = 1/2, barnes_hut::Bool = false)
+  # if barnes_hut # commented out to enable experiment with
+  #     neighbor_scale = 0.25
+  # end
   dimension = isempty(tgt_points) ? src_points : length(tgt_points[1])
   center = sum(vcat(tgt_points, src_points)) / (length(tgt_points) + length(src_points))
   root_sidelen = maximum((maximum(abs, difference(pt, center)) for pt in vcat(tgt_points, src_points)))
@@ -284,13 +283,13 @@ function initialize_tree(tgt_points, src_points, max_dofs_per_leaf, outgoing_len
   allleaves = fill(root, 0)
   bt = Tree(dimension, root, max_dofs_per_leaf, allnodes, allleaves, neighbor_scale)
   if (length(tgt_points) + length(src_points)) > 2max_dofs_per_leaf
-    rec_split!(bt, root)
+      rec_split!(bt, root)
   end
 
   for node in bt.allnodes
-    if isleaf(node)
-      push!(bt.allleaves, node)
-    end
+      if isleaf(node)
+          push!(bt.allleaves, node)
+      end
   end
   compute_near_far_nodes!(bt)
   num_neighbors = sum([length(node.neighbors) for node in bt.allleaves])
@@ -299,15 +298,16 @@ function initialize_tree(tgt_points, src_points, max_dofs_per_leaf, outgoing_len
   tot_near = 0
   tot_leaf_points = 0
   for n in bt.allleaves
-    avg_pt = zeros(dimension)
-    for pt in n.tgt_points
-      avg_pt+=pt
-    end
-    n.com =avg_pt / length(n.tgt_points)
-
-    tot_leaf_points += length(n.tgt_points)
-    tot_far += length(n.far_nodes)
-    tot_near += length(n.neighbors)
+      if barnes_hut
+          avg_pt = zeros(dimension)
+          for pt in n.tgt_points
+              avg_pt += pt
+          end
+          n.com = avg_pt / length(n.tgt_points)
+      end
+      tot_leaf_points += length(n.tgt_points)
+      tot_far += length(n.far_nodes)
+      tot_near += length(n.neighbors)
   end
 
   vec = [length(node.tgt_points) for node in bt.allleaves]

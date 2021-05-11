@@ -440,6 +440,10 @@ git-tree-sha1 = "b68b57aa973a0526568c67cbbb68c24c2c98cc47"
 uuid = "5078a376-72f3-5289-bfd5-ec5146d43c02"
 version = "0.21.4"
 
+[[LazyArtifacts]]
+deps = ["Artifacts", "Pkg"]
+uuid = "4af54fe1-eca0-43a8-85a7-787d91b784e3"
+
 [[LazyInverse]]
 deps = ["LinearAlgebra", "Test"]
 git-tree-sha1 = "31c384b494aaf4220e3724e9ca1e94839b643f42"
@@ -450,7 +454,7 @@ version = "0.1.0"
 
 [[LazyLinearAlgebra]]
 deps = ["DataStructures", "LinearAlgebra", "Test"]
-git-tree-sha1 = "a291a2ecc49ef4af734e6a2326cd20268085d57b"
+git-tree-sha1 = "cddb97892c88465cf3de3378dc3f1b177b191d21"
 repo-rev = "master"
 repo-url = "git@github.com:SebastianAment/LazyLinearAlgebra.jl.git"
 uuid = "2243f6fe-7ec1-4b08-8ffc-03329353bf89"
@@ -658,9 +662,9 @@ uuid = "91d4177d-7536-5919-b921-800302f37372"
 version = "1.3.1+3"
 
 [[OrderedCollections]]
-git-tree-sha1 = "4fa2ba51070ec13fcc7517db714445b4ab986bdf"
+git-tree-sha1 = "85f8e6578bf1f9ee0d11e7bb1b1456435479d47c"
 uuid = "bac558e1-5e72-5ebc-8fee-abe8a469f55d"
-version = "1.4.0"
+version = "1.4.1"
 
 [[PCRE_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
@@ -698,9 +702,9 @@ version = "1.0.10"
 
 [[Plots]]
 deps = ["Base64", "Contour", "Dates", "FFMPEG", "FixedPointNumbers", "GR", "GeometryBasics", "JSON", "Latexify", "LinearAlgebra", "Measures", "NaNMath", "PlotThemes", "PlotUtils", "Printf", "REPL", "Random", "RecipesBase", "RecipesPipeline", "Reexport", "Requires", "Scratch", "Showoff", "SparseArrays", "Statistics", "StatsBase", "UUIDs"]
-git-tree-sha1 = "eced322de627fa8469c55f24899fdd4cce7d978c"
+git-tree-sha1 = "2628e5859819173cef995470af83db42bf411ef8"
 uuid = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
-version = "1.13.2"
+version = "1.14.0"
 
 [[Polynomials]]
 deps = ["Intervals", "LinearAlgebra", "OffsetArrays", "RecipesBase"]
@@ -821,9 +825,9 @@ uuid = "9dd28c12-4719-4e7d-b634-e7b733a6d046"
 version = "0.4.8"
 
 [[SphericalHarmonicModes]]
-git-tree-sha1 = "ef91252f6a1f911c991cda8d8f74462906e41fa8"
+git-tree-sha1 = "9a23f40c76b1215fbd269b6a266627b68de577de"
 uuid = "0e9554e2-b38b-11e9-16d7-9d9abfec665a"
-version = "0.4.9"
+version = "0.4.10"
 
 [[SphericalHarmonics]]
 deps = ["ElasticArrays", "Printf", "SphericalHarmonicArrays", "SphericalHarmonicModes"]
@@ -901,10 +905,10 @@ deps = ["InteractiveUtils", "Logging", "Random", "Serialization"]
 uuid = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [[TimeZones]]
-deps = ["Dates", "EzXML", "Mocking", "Pkg", "Printf", "RecipesBase", "Serialization", "Unicode"]
-git-tree-sha1 = "3f6f0be07f33e33bd986a58b4cf2d6c9fd2b7f18"
+deps = ["Dates", "EzXML", "LazyArtifacts", "Mocking", "Pkg", "Printf", "RecipesBase", "Serialization", "Unicode"]
+git-tree-sha1 = "960099aed321e05ac649c90d583d59c9309faee1"
 uuid = "f269a46b-ccf7-5d73-abea-4c690281aa53"
-version = "1.5.4"
+version = "1.5.5"
 
 [[TimerOutputs]]
 deps = ["Printf"]

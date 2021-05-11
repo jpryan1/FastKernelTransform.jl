@@ -69,6 +69,14 @@ end
         c = K * y
         @. c += variance * y
         @test isapprox(b, c, rtol = rtol)
+        # indexing
+        for _ in 1:16
+            i, j = rand(1:n, 2)
+            println(i, j)
+            println(fact[i, j])
+            println(K[i, j])
+            @test fact[i, j] ≈ K[i, j]
+        end
     end
 
     @testset "2d" begin

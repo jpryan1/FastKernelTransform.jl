@@ -49,7 +49,8 @@ end
 # multipole coefficients to single indices into an array (for efficient
 # matrix vector products)
 # TODO: add element type to Factorization
-struct MultipoleFactorization{T, K, TO<:TimerOutput, MST, NT, TT<:Tree, FT, GT, RT<:AbstractVector{Int}, VT} <: Factorization{T}
+struct MultipoleFactorization{T, K, TO<:TimerOutput, MST, NT, TT<:Tree, TP, SP,
+                        FT, GT, RT<:AbstractVector{Int}, VT} <: Factorization{T}
     kernel::K
     trunc_param::Int64
     to::TO
@@ -57,7 +58,9 @@ struct MultipoleFactorization{T, K, TO<:TimerOutput, MST, NT, TT<:Tree, FT, GT, 
     multi_to_single::MST
     normalizer_table::NT
     tree::TT
+    tgt_points::TP
     n_tgt_points::Int
+    src_points::SP
     n_src_points::Int
 
     get_F::FT
@@ -67,6 +70,7 @@ struct MultipoleFactorization{T, K, TO<:TimerOutput, MST, NT, TT<:Tree, FT, GT, 
     variance::VT # additive diagonal correction TODO: replace with LazyMatrixSum
     symmetric::Bool
     lazy_size::Int
+    barnes_hut::Bool
     _k::T # sample output of kernel, only here to determine element type
 end
 LinearAlgebra.issymmetric(F::MultipoleFactorization) = F.symmetric
@@ -103,7 +107,8 @@ function MultipoleFactorization(kernel, tgt_points::VecOfVec{<:Real}, src_points
                                 max_dofs_per_leaf::Int, precond_param::Int,
                                 trunc_param::Int, get_F, get_G, radial_fun_ranks::AbstractVector,
                                 to::TimerOutput = TimerOutput(), variance = nothing;
-                                lazy_size::Int = lazy_size_heuristic(tgt_points, src_points))
+                                lazy_size::Int = lazy_size_heuristic(tgt_points, src_points),
+                                neighbor_scale::Real = 1/2, barnes_hut::Bool = (trunc_param == 0))
     (max_dofs_per_leaf ≤ precond_param ||(precond_param == 0)) || throw(DomainError("max_dofs_per_leaf < precond_param"))
     n_tgt_points = length(tgt_points)
     n_src_points = length(src_points)
@@ -111,13 +116,14 @@ function MultipoleFactorization(kernel, tgt_points::VecOfVec{<:Real}, src_points
     multi_to_single = get_index_mapping_table(dimension, trunc_param, radial_fun_ranks)
     @timeit to "Populate normalizer table" normalizer_table = squared_hyper_normalizer_table(dimension, trunc_param)
     outgoing_length = length(keys(multi_to_single))
-    barnes = (trunc_param == 0)
-    Base.@time tree = initialize_tree(tgt_points, src_points, max_dofs_per_leaf, outgoing_length, barnes)
+    Base.@time tree = initialize_tree(tgt_points, src_points, max_dofs_per_leaf, outgoing_length, neighbor_scale, barnes_hut)
     _k = kernel(tgt_points[1], src_points[1]) # sample evaluation used to determine element type
     symmetric = tgt_points === src_points
     fact = MultipoleFactorization(kernel, trunc_param, to,
-                                multi_to_single, normalizer_table, tree, n_tgt_points, n_src_points,
-                                get_F, get_G, radial_fun_ranks, variance, symmetric, lazy_size, _k)
+                                multi_to_single, normalizer_table, tree,
+                                tgt_points, n_tgt_points, src_points, n_src_points,
+                                get_F, get_G, radial_fun_ranks, variance, symmetric,
+                                lazy_size, barnes_hut, _k)
     @timeit fact.to "Populate transformation table" compute_transformation_mats!(fact)
     if tgt_points === src_points && precond_param > 0
         @timeit fact.to "Get diag inv for precond" compute_preconditioner!(fact, precond_param, variance)
@@ -125,6 +131,9 @@ function MultipoleFactorization(kernel, tgt_points::VecOfVec{<:Real}, src_points
     return fact
 end
 
+function Base.getindex(F::MultipoleFactorization, i::Int, j::Int)
+    F.kernel(F.tgt_points[i], F.src_points[j])
+end
 Base.size(F::MultipoleFactorization) = (F.n_tgt_points, F.n_src_points)
 Base.size(F::MultipoleFactorization, i::Int) = i > 2 ? 1 : (i==1 ? F.n_tgt_points : F.n_src_points)
 # number of multipoles of factorization
@@ -215,12 +224,7 @@ function transformation_mats_kernel!(fact::MultipoleFactorization, leaf, timeit:
         far_src_points = length(far_node.src_points)
         if (num_multipoles * (far_src_points + far_leaf_points)) < (far_src_points * far_leaf_points) # only use multipoles if it is efficient
             src_points = far_node.src_points
-
-            if fact.trunc_param == 0
-                center(x) = difference(x, far_node.com) # WARNING: BOTTLENECK
-            else
-                center(x) = difference(x, far_node.center) # WARNING: BOTTLENECK
-            end
+            center(x) = difference(x, (fact.barnes_hut ? far_node.com : far_node.center))
             recentered_tgt = center.(tgt_points)
             recentered_src = center.(src_points) # IDEA: move out of loop?
 
