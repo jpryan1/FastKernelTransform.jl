@@ -21,7 +21,9 @@ function derivatives!(d::AbstractVector, f, x::Real)
     m = length(d) - 1
     @. d = 0
     d[1] = x
-    d[2] = 1
+    if length(d)>1
+        d[2] = 1
+    end
     x = Taylor1(d, m) # mth order taylor series
     fx = f(x) # TODO: in place?
     derivatives!(d, fx) # overwrites coeffs vector with derivatives

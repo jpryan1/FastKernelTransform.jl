@@ -30,6 +30,7 @@ mutable struct BallNode{PT<:AbstractVector{<:AbstractVector{<:Real}},
     right_child # can be BallNode or Nothing
     parent # can be BallNode or Nothing
     center::CT
+    com::CT
     splitter_normal # nothing if leaf
     sidelens
 end
@@ -51,7 +52,7 @@ function BallNode(isprecond::Bool, dimension::Int, ctr::AbstractVector{<:Real},
   o2i = fill(s2o, 0)
   BallNode(isprecond, dimension, tgt_points, tgt_point_indices,
            near_indices, src_points, src_point_indices, neighbors, far_nodes, far_leaf_points, outgoing,
-           near_mat, diag_block, s2o, o2i, nothing, nothing, nothing, ctr, nothing, sidelens)
+           near_mat, diag_block, s2o, o2i, nothing, nothing, nothing, ctr, zeros(length(ctr)), nothing, sidelens)
 end
 
 # calculates the total number of far points for a given leaf # TODO: deprecate?
@@ -268,8 +269,11 @@ end
 
 
 function initialize_tree(tgt_points, src_points, max_dofs_per_leaf, outgoing_length::Int,
-                    neighbor_scale::Real = 0.75)
+                    neighbor_scale::Real = 0.75, barnes::Bool = false)
 
+  if barnes
+    neighbor_scale = 0.25
+  end
   dimension = isempty(tgt_points) ? src_points : length(tgt_points[1])
   center = sum(vcat(tgt_points, src_points)) / (length(tgt_points) + length(src_points))
   root_sidelen = maximum((maximum(abs, difference(pt, center)) for pt in vcat(tgt_points, src_points)))
@@ -295,6 +299,12 @@ function initialize_tree(tgt_points, src_points, max_dofs_per_leaf, outgoing_len
   tot_near = 0
   tot_leaf_points = 0
   for n in bt.allleaves
+    avg_pt = zeros(dimension)
+    for pt in n.tgt_points
+      avg_pt+=pt
+    end
+    n.com =avg_pt / length(n.tgt_points)
+
     tot_leaf_points += length(n.tgt_points)
     tot_far += length(n.far_nodes)
     tot_near += length(n.neighbors)

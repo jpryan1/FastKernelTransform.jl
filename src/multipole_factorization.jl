@@ -111,7 +111,8 @@ function MultipoleFactorization(kernel, tgt_points::VecOfVec{<:Real}, src_points
     multi_to_single = get_index_mapping_table(dimension, trunc_param, radial_fun_ranks)
     @timeit to "Populate normalizer table" normalizer_table = squared_hyper_normalizer_table(dimension, trunc_param)
     outgoing_length = length(keys(multi_to_single))
-    Base.@time tree = initialize_tree(tgt_points, src_points, max_dofs_per_leaf, outgoing_length)
+    barnes = (trunc_param == 0)
+    Base.@time tree = initialize_tree(tgt_points, src_points, max_dofs_per_leaf, outgoing_length, barnes)
     _k = kernel(tgt_points[1], src_points[1]) # sample evaluation used to determine element type
     symmetric = tgt_points === src_points
     fact = MultipoleFactorization(kernel, trunc_param, to,
@@ -215,7 +216,11 @@ function transformation_mats_kernel!(fact::MultipoleFactorization, leaf, timeit:
         if (num_multipoles * (far_src_points + far_leaf_points)) < (far_src_points * far_leaf_points) # only use multipoles if it is efficient
             src_points = far_node.src_points
 
-            center(x) = difference(x, far_node.center) # WARNING: BOTTLENECK
+            if fact.trunc_param == 0
+                center(x) = difference(x, far_node.com) # WARNING: BOTTLENECK
+            else
+                center(x) = difference(x, far_node.center) # WARNING: BOTTLENECK
+            end
             recentered_tgt = center.(tgt_points)
             recentered_src = center.(src_points) # IDEA: move out of loop?
 

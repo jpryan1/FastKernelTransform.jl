@@ -150,52 +150,72 @@ function transformation_coefficients(dimension::Int, trunc_param::Int, T = Float
     return table
 end
 
+function A(j::Int, k::Int, alpha::Real)
+    if mod(j+k,2) !=0
+        return 0
+    end
+    bigfact = BigInt(1)
+    for p in 1:k
+        numer = BigInt(1)
+        denom = BigInt(1)
+        if p <= k
+            numer = p
+        end
+        if p <= div(k-j,2)
+            denom *= p
+        end
+        bigfact *= (numer//denom)
+    end
+    powertwo = 1//(BigInt(2^k))
+    rising = BigInt(1)
+    prod_idx = alpha
+    while prod_idx <= alpha + div(j+k,2)
+        rising *= (prod_idx == 0 ? 1 : prod_idx)
+        prod_idx += 1
+    end
+    return (powertwo
+        * (1//rising)
+        *(alpha==0 ? 2 : (alpha+j))
+        *bigfact)
+end
+
+function B(n::Int, m::Int)
+    bigfact = BigInt(1)
+    for p in 1:(3n+3m)
+        numer = BigInt(1)
+        denom = BigInt(1)
+        if p <= (2n-m-1)
+            numer = p
+        end
+        if p <= (m-1)
+            denom *= p
+        end
+        if p <= (n-m)
+            denom *= p
+        end
+        bigfact *= (numer//denom)
+    end
+    powertwo = BigInt(2)
+    if 2n-m < 0
+        powertwo = BigInt(2^(m-2n))
+    else
+        powertwo = 1//(BigInt(2^(2n-m)))
+    end
+    return ((-1)^(m+n)
+        *powertwo
+        *bigfact
+        )
+end
+
 function transformation_coefficient(j::Int, k::Int, m::Int, alpha::Real)
     total = BigInt(0)
-    for i in max(k,2m-j):2:j
-        bigfact = BigInt(1)
-        for p in 1:(i+j)
-            numer = BigInt(1)
-            denom = BigInt(1)
-            if p <= (i+j-m-1)
-                numer = p
-            end
-            if p <= i
-                numer *= p
-            end
-            if p <= (m-1)
-                denom *= p
-            end
-            if p <= (div(i+j,2)-m)
-                denom *= p
-            end
-            if p <= div(i+j,2)
-                denom *= p
-            end
-            if p <= div(i-k,2)
-                denom *= p
-            end
-            bigfact *= (numer//denom)
-        end
-        powertwo = BigInt(2)
-        if m-j-i > 0
-            powertwo = BigInt(2^(m-j-i))
-        else
-            powertwo = 1//(BigInt(2^(-m+j+i)))
-        end
-        rising = BigInt(1)
-        prod_idx = alpha
-        while prod_idx <= alpha + div(i+k,2)
-            rising *= (prod_idx == 0 ? 1 : prod_idx)
-            prod_idx += 1
-        end
+    for n in max(m,div(j+k,2)):j
         total += (
-            ((-1)^div(3i+j+2m, 2))
-            *powertwo
-            * (1//rising)
-            *(alpha==0 ? 2 : (alpha+k))
-            *binomial(div(i+j,2), div(j-i, 2))
-            *bigfact
+            1//factorial(BigInt(n))
+            *(-2)^(2n-j)
+            *A(k,2n-j,alpha)
+            *B(n,m)
+            *binomial(n,2n-j)
             )
     end
     if (alpha == 0 && k == 0) total /= 2 end
