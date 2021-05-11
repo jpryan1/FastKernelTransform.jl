@@ -454,7 +454,7 @@ version = "0.1.0"
 
 [[LazyLinearAlgebra]]
 deps = ["DataStructures", "LinearAlgebra", "Test"]
-git-tree-sha1 = "cddb97892c88465cf3de3378dc3f1b177b191d21"
+git-tree-sha1 = "c258233b1ef40e86a2780ef638074d7dfdd59b4d"
 repo-rev = "master"
 repo-url = "git@github.com:SebastianAment/LazyLinearAlgebra.jl.git"
 uuid = "2243f6fe-7ec1-4b08-8ffc-03329353bf89"

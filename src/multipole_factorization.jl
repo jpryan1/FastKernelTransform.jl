@@ -38,8 +38,8 @@ end
 # factorize only calls fkt if it is worth it
 function LinearAlgebra.factorize(mat::FmmMatrix)
     if max(length(mat.tgt_points),length(mat.src_points)) < mat.max_dofs_per_leaf
-        x = mat.src_points
-        return factorize(k.(mat.tgt_points, permutedims(mat.src_points)))
+        x, y = mat.tgt_points, mat.src_points
+        return factorize(mat.kernel.(x, permutedims(y)))
     else
         return fkt(mat)
     end
@@ -78,18 +78,28 @@ LinearAlgebra.issymmetric(F::MultipoleFactorization) = F.symmetric
 # if only target points are passed, convert to src_points
 function MultipoleFactorization(kernel, tgt_points::VecOfVec{<:Real},
                                 max_dofs_per_leaf::Int, precond_param::Int, trunc_param::Int,
-                                to::TimerOutput = TimerOutput(), variance = nothing)
+                                to::TimerOutput = TimerOutput(), variance = nothing;
+                                lazy_size::Int = lazy_size_heuristic(tgt_points, src_points),
+                                neighbor_scale::Real = 1/2, barnes_hut::Bool = (trunc_param == 0),
+                                verbose::Bool = false)
     MultipoleFactorization(kernel, tgt_points, tgt_points, max_dofs_per_leaf,
-                           precond_param, trunc_param, to, variance)
+                           precond_param, trunc_param, to, variance,
+                           lazy_size = lazy_size, neighbor_scale = neighbor_scale,
+                           barnes_hut = barnes_hut, verbose = verbose)
 end
 
 function MultipoleFactorization(kernel, tgt_points::VecOfVec{<:Real}, src_points::VecOfVec{<:Real},
                                 max_dofs_per_leaf::Int, precond_param::Int, trunc_param::Int,
-                                to::TimerOutput = TimerOutput(), variance = nothing)
+                                to::TimerOutput = TimerOutput(), variance = nothing;
+                                lazy_size::Int = lazy_size_heuristic(tgt_points, src_points),
+                                neighbor_scale::Real = 1/2, barnes_hut::Bool = (trunc_param == 0),
+                                verbose::Bool = false)
     dimension = length(tgt_points[1])
     @timeit to "computing F and G" get_F, get_G, radial_fun_ranks = init_F_G(kernel, dimension, trunc_param, Val(qrable(kernel)))
     MultipoleFactorization(kernel, tgt_points, src_points, max_dofs_per_leaf, precond_param,
-                           trunc_param, get_F, get_G, radial_fun_ranks, to, variance)
+                           trunc_param, get_F, get_G, radial_fun_ranks, to, variance,
+                           lazy_size = lazy_size, neighbor_scale = neighbor_scale,
+                           barnes_hut = barnes_hut, verbose = verbose)
 end
 
 function lazy_size_heuristic(tgt_points::VecOfVec{<:Real}, src_points::VecOfVec{<:Real})
@@ -108,7 +118,8 @@ function MultipoleFactorization(kernel, tgt_points::VecOfVec{<:Real}, src_points
                                 trunc_param::Int, get_F, get_G, radial_fun_ranks::AbstractVector,
                                 to::TimerOutput = TimerOutput(), variance = nothing;
                                 lazy_size::Int = lazy_size_heuristic(tgt_points, src_points),
-                                neighbor_scale::Real = 1/2, barnes_hut::Bool = (trunc_param == 0))
+                                neighbor_scale::Real = 1/2, barnes_hut::Bool = (trunc_param == 0),
+                                verbose::Bool = false)
     (max_dofs_per_leaf ≤ precond_param ||(precond_param == 0)) || throw(DomainError("max_dofs_per_leaf < precond_param"))
     n_tgt_points = length(tgt_points)
     n_src_points = length(src_points)
@@ -116,7 +127,9 @@ function MultipoleFactorization(kernel, tgt_points::VecOfVec{<:Real}, src_points
     multi_to_single = get_index_mapping_table(dimension, trunc_param, radial_fun_ranks)
     @timeit to "Populate normalizer table" normalizer_table = squared_hyper_normalizer_table(dimension, trunc_param)
     outgoing_length = length(keys(multi_to_single))
-    Base.@time tree = initialize_tree(tgt_points, src_points, max_dofs_per_leaf, outgoing_length, neighbor_scale, barnes_hut)
+    @timeit to "Tree initialization" tree = initialize_tree(tgt_points, src_points, max_dofs_per_leaf,
+                                      outgoing_length, neighbor_scale,
+                                      barnes_hut = barnes_hut, verbose = verbose)
     _k = kernel(tgt_points[1], src_points[1]) # sample evaluation used to determine element type
     symmetric = tgt_points === src_points
     fact = MultipoleFactorization(kernel, trunc_param, to,

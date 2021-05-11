@@ -50,7 +50,7 @@ mat = FmmMatrix(kernel, points, max_dofs_per_leaf, precond_param, trunc_param, t
 end
 
 @timeit to "Factorization matvec "       bbar      = *(fact, x, verbose = true)
-compare = false
+compare = true
 if compare
     @timeit to "Form dense matrix direct" begin
         @timeit to "allocation" kern_mat = zeros(length(points), length(points))

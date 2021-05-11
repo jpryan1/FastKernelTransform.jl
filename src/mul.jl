@@ -19,52 +19,6 @@ function mul!(Y::AbstractMatrix, A::MultipoleFactorization, X::AbstractMatrix,
     _mul!(Y, A, X, α, β, verbose = verbose)
 end
 
-# this is not thread-safe
-# ASSUMES node.outgoing is pre-allocated
-# function mul!(y::AbstractVector, fact::MultipoleFactorization, x::AbstractVector,
-#         thread_safe::Val{false}, α::Real = 1, β::Real = 0; verbose::Bool = false)
-#     _checksizes(y, fact, x)
-#     num_multipoles = length(keys(fact.multi_to_single))
-#     total_compressed = 0
-#     total_not_compressed = 0
-#
-#     @sync for node in fact.tree.allnodes # computes all multipoles
-#         if !isempty(node.s2o)
-#             @spawn begin
-#                 x_far_src = @view x[node.src_point_indices]
-#                 mul!(node.outgoing, node.s2o, x_far_src) # WARNING: this is not thread-safe (multiply several vectors in parallel)
-#             end
-#         end
-#     end
-#
-#     @sync for leaf in fact.tree.allleaves
-#         if isempty(leaf.tgt_points) continue end
-#         @spawn begin
-#             xi = @view x[leaf.near_indices]
-#             yi = @view y[leaf.tgt_point_indices]
-#             mul!(yi, leaf.near_mat, xi, α, β) # near field interaction
-#             tot_far_points = get_tot_far_points(leaf)
-#             for far_node_idx in eachindex(leaf.far_nodes)
-#                 far_node = leaf.far_nodes[far_node_idx]
-#                 if isempty(far_node.src_points) continue end
-#                 far_leaf_points = far_node.far_leaf_points
-#                 far_src_points = length(far_node.src_points)
-#                 if (num_multipoles * (far_src_points + far_leaf_points)) < (far_src_points * far_leaf_points) # only use multipoles if it is efficient
-#                     total_compressed += 1
-#                     xi = far_node.outgoing
-#                 else
-#                     total_not_compressed += 1
-#                     xi = @view x[far_node.src_point_indices]
-#                 end
-#                 o2i = leaf.o2i[far_node_idx]
-#                 multiply_helper!(yi, o2i, xi, α)
-#             end
-#         end
-#     end
-#     verbose && println("Compressed: ",total_compressed," not compressed: ", total_not_compressed)
-#     return y
-# end
-
 # IDEA: could pass data structure that reports how many compressions took place
 function _mul!(y::AbstractVecOrMat, fact::MultipoleFactorization, x::AbstractVecOrMat,
               α::Real = 1, β::Real = 0, thread_safe::Union{Val{true}, Val{false}} = Val(true);

@@ -72,9 +72,6 @@ end
         # indexing
         for _ in 1:16
             i, j = rand(1:n, 2)
-            println(i, j)
-            println(fact[i, j])
-            println(K[i, j])
             @test fact[i, j] ≈ K[i, j]
         end
     end

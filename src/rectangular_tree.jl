@@ -1,6 +1,7 @@
 # This struct stores domain tree nodes' data, including anything that makes
 # matvec'ing faster due to precomputation and storage at factor time
 # IDEA: use NearestNeighbors.jl and StaticArrays to speed up tree construction
+# (has support for BallTrees)
 mutable struct BallNode{PT<:AbstractVector{<:AbstractVector{<:Real}},
                       PIT<:AbstractVector{<:Int},
                       NT<:AbstractVector,
@@ -100,12 +101,12 @@ end
 # Compute neighbor lists (note: ONLY FOR LEAVES at this time)
 function compute_near_far_nodes!(bt)
   for leaf in bt.allleaves
-    if length(leaf.tgt_points)==0 continue end
+    isempty(leaf.tgt_points) && continue
     node_queue = [bt.root]
     while length(node_queue) > 0
       cur_node = pop!(node_queue)
       if cur_node == leaf continue end
-      if length(cur_node.src_points)==0 continue end
+      isempty(cur_node.src_points) && continue
       # Are they overlapping
       if !isleaf(cur_node) && is_ancestor_of(cur_node, leaf)
         push!(node_queue, cur_node.right_child)
@@ -267,59 +268,64 @@ function rec_split!(bt, node)
     # end
 end
 
-
 function initialize_tree(tgt_points, src_points, max_dofs_per_leaf, outgoing_length::Int,
-                         neighbor_scale::Real = 1/2, barnes_hut::Bool = false)
-  # if barnes_hut # commented out to enable experiment with
-  #     neighbor_scale = 0.25
-  # end
-  dimension = isempty(tgt_points) ? src_points : length(tgt_points[1])
-  center = sum(vcat(tgt_points, src_points)) / (length(tgt_points) + length(src_points))
-  root_sidelen = maximum((maximum(abs, difference(pt, center)) for pt in vcat(tgt_points, src_points)))
-  root = BallNode(false, dimension, center, tgt_points, collect(1:length(tgt_points)),
-    src_points, collect(1:length(src_points)), outgoing_length, [2.01*root_sidelen for i in 1:dimension])
+                         neighbor_scale::Real = 1/2; barnes_hut::Bool = false, verbose::Bool = false)
+    dimension = isempty(tgt_points) ? src_points : length(tgt_points[1])
+    center = sum(vcat(tgt_points, src_points)) / (length(tgt_points) + length(src_points))
+    root_sidelen = maximum((maximum(abs, difference(pt, center)) for pt in vcat(tgt_points, src_points)))
+    root = BallNode(false, dimension, center, tgt_points, collect(1:length(tgt_points)),
+      src_points, collect(1:length(src_points)), outgoing_length, [2.01*root_sidelen for i in 1:dimension])
 
-  allnodes = [root]
-  allleaves = fill(root, 0)
-  bt = Tree(dimension, root, max_dofs_per_leaf, allnodes, allleaves, neighbor_scale)
-  if (length(tgt_points) + length(src_points)) > 2max_dofs_per_leaf
-      rec_split!(bt, root)
-  end
+    allnodes = [root]
+    allleaves = fill(root, 0)
+    bt = Tree(dimension, root, max_dofs_per_leaf, allnodes, allleaves, neighbor_scale)
+    if (length(tgt_points) + length(src_points)) > 2max_dofs_per_leaf
+        rec_split!(bt, root)
+    end
 
-  for node in bt.allnodes
-      if isleaf(node)
-          push!(bt.allleaves, node)
-      end
-  end
-  compute_near_far_nodes!(bt)
-  num_neighbors = sum([length(node.neighbors) for node in bt.allleaves])
-  println("Avg neighborhood: ", num_neighbors/length(bt.allleaves))
-  tot_far = 0
-  tot_near = 0
-  tot_leaf_points = 0
-  for n in bt.allleaves
-      if barnes_hut
-          avg_pt = zeros(dimension)
-          for pt in n.tgt_points
-              avg_pt += pt
-          end
-          n.com = avg_pt / length(n.tgt_points)
-      end
-      tot_leaf_points += length(n.tgt_points)
-      tot_far += length(n.far_nodes)
-      tot_near += length(n.neighbors)
-  end
+    for node in bt.allnodes
+        if isleaf(node)
+            push!(bt.allleaves, node)
+        end
+    end
+    compute_near_far_nodes!(bt)
+    barnes_hut && compute_center_of_mass!(bt)
+    verbose && print_tree_statistics(bt)
+    return bt
+end
 
-  vec = [length(node.tgt_points) for node in bt.allleaves]
-  println("Num leaves ", length(bt.allleaves))
-  println("Num nodes ", length(bt.allnodes))
-  println("Avg far ", tot_far/length(bt.allleaves))
-  println("Mean points ", mean(vec))
-  println("Median points ", median(vec))
-  println("Minimum points ", minimum(vec))
-  println("Maximum points ", maximum(vec))
-  println("Avg leaf_points ", tot_leaf_points/length(bt.allleaves))
-  return bt
+function compute_center_of_mass!(bt::Tree)
+    for n in bt.allleaves
+        avg_pt = zeros(dimension)
+        for pt in n.tgt_points
+            avg_pt += pt
+        end
+        avg_pt ./= length(n.tgt_points)
+        n.com = avg_pt
+    end
+    return bt
+end
+
+function print_tree_statistics(bt::Tree)
+    tot_far = 0
+    tot_near = 0
+    tot_leaf_points = 0
+    for n in bt.allleaves
+        tot_leaf_points += length(n.tgt_points)
+        tot_far += length(n.far_nodes)
+        tot_near += length(n.neighbors)
+    end
+    num_neighbors = sum([length(node.neighbors) for node in bt.allleaves])
+    println("Avg neighborhood: ", num_neighbors/length(bt.allleaves))
+    vec = [length(node.tgt_points) for node in bt.allleaves]
+    println("Num leaves ", length(bt.allleaves))
+    println("Num nodes ", length(bt.allnodes))
+    println("Avg far ", tot_far/length(bt.allleaves))
+    println("Mean points ", mean(vec))
+    println("Median points ", median(vec))
+    println("Minimum points ", minimum(vec))
+    println("Maximum points ", maximum(vec))
+    println("Avg leaf_points ", tot_leaf_points/length(bt.allleaves))
 end
 
 # Random.seed!(4);
