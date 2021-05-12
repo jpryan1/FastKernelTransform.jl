@@ -47,6 +47,32 @@ function unit_hypersphere(n::Int, d::Int)
     return [x/norm(x) for x in data]
 end
 
+function interlocking_rings(n::Int, d::Int)
+    data = [randn(2) for i in 1:n]
+    rad = 10
+    for i in 1:n
+        pt = data[i]
+        pt /= ((1.0/rad)*norm(pt))
+        if (rand() > 0.5)
+            push!(pt, pt[2])
+            pt[2] = 0
+            pt[1] += rad
+        else
+            push!(pt, 0)
+        end
+        if d>3
+            zeropad = zeros(d-3)
+            append!(pt, zeropad)
+        end
+        dir_to_jump = randn(d)
+        dir_to_jump /= norm(dir_to_jump)
+        rad_to_jump = rand()^(1.0/d)
+        pt += rad_to_jump*dir_to_jump
+        data[i]=pt
+    end
+    return data
+end
+
 function two_bump_data(n::Int, d::Int, σ::Real = .1)
     iseven(n) || throw("n ($n) is not even")
     nc = n ÷ 2
