@@ -34,6 +34,7 @@ mutable struct BallNode{PT<:AbstractVector{<:AbstractVector{<:Real}},
     com::CT
     splitter_normal # nothing if leaf
     sidelens
+    max_rprime
 end
 
 # constructor convenience
@@ -53,7 +54,7 @@ function BallNode(isprecond::Bool, dimension::Int, ctr::AbstractVector{<:Real},
   o2i = fill(s2o, 0)
   BallNode(isprecond, dimension, tgt_points, tgt_point_indices,
            near_indices, src_points, src_point_indices, neighbors, far_nodes, far_leaf_points, outgoing,
-           near_mat, diag_block, s2o, o2i, nothing, nothing, nothing, ctr, zeros(length(ctr)), nothing, sidelens)
+           near_mat, diag_block, s2o, o2i, nothing, nothing, nothing, ctr, zeros(length(ctr)), nothing, sidelens, -1)
 end
 
 # calculates the total number of far points for a given leaf # TODO: deprecate?
@@ -84,10 +85,6 @@ function plane_intersects_sphere(plane_center, splitter_normal,
 end
 
 
-function radius(node)
-  return norm(node.sidelens)/2
-end
-
 function is_ancestor_of(leaf, node)
   cur = leaf
   while cur.parent != nothing
@@ -116,7 +113,10 @@ function compute_near_far_nodes!(bt)
 
       # Is the ratio satisfied?
       min_r_val = minimum((norm(difference(pt, cur_node.center)) for pt in leaf.tgt_points))
-      max_rprime_val = maximum((norm(difference(pt, cur_node.center)) for pt in cur_node.src_points)) # pre-compute
+      if cur_node.max_rprime == -1
+        cur_node.max_rprime = maximum((norm(difference(pt, cur_node.center)) for pt in cur_node.src_points)) # pre-compute
+      end
+      max_rprime_val = cur_node.max_rprime
       # min_r_val = norm(difference(leaf.center, cur_node.center)) - norm(leaf.sidelens)/2
       # max_rprime_val = norm(cur_node.sidelens)/2
       if max_rprime_val/min_r_val > bt.neighbor_scale # no compression here
