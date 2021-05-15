@@ -1,14 +1,14 @@
 # matrix-vector multiplication and solves for MultipoleFactorization type
 import LinearAlgebra: *, mul!, \
-function *(fact::MultipoleFactorization, x::AbstractVector; verbose::Bool = false)
-    b = similar(x, size(fact, 1))
-    mul!(b, fact, x, verbose = verbose)
+function *(F::MultipoleFactorization, x::AbstractVector; verbose::Bool = false)
+    b = similar(x, size(F, 1))
+    mul!(b, F, x, verbose = verbose)
 end
-function *(fact::MultipoleFactorization, X::AbstractMatrix; verbose::Bool = false)
-    B = similar(X, size(fact, 1), size(X, 2))
-    mul!(B, fact, X, verbose = verbose)
+function *(F::MultipoleFactorization, X::AbstractMatrix; verbose::Bool = false)
+    B = similar(X, size(F, 1), size(X, 2))
+    mul!(B, F, X, verbose = verbose)
 end
-\(fact::MultipoleFactorization, b::AbstractVector) = conj_grad(fact, b)
+\(F::MultipoleFactorization, b::AbstractVector) = conj_grad(F, b)
 
 function mul!(Y::AbstractVector, A::MultipoleFactorization, X::AbstractVector,
               α::Real = 1, β::Real = 0; verbose::Bool = false)
@@ -20,15 +20,16 @@ function mul!(Y::AbstractMatrix, A::MultipoleFactorization, X::AbstractMatrix,
 end
 
 # IDEA: could pass data structure that reports how many compressions took place
-function _mul!(y::AbstractVecOrMat, fact::MultipoleFactorization, x::AbstractVecOrMat,
-              α::Real = 1, β::Real = 0, thread_safe::Union{Val{true}, Val{false}} = Val(true);
-              verbose::Bool = false)
-    _checksizes(y, fact, x)
+function _mul!(y::AbstractVecOrMat, F::MultipoleFactorization, x::AbstractVecOrMat,
+              α::Real = 1, β::Real = 0; verbose::Bool = false)
+    _checksizes(y, F, x)
     comp_count = (0, 0) # total_compressed, total_not_compressed
-    compute_multipoles!(y, fact, x, thread_safe)
-    @sync for leaf in fact.tree.allleaves
+    multipoles = allocate_multipoles(F, x) # move upward?
+    compute_multipoles!(multipoles, F, x)
+    @sync for (i, leaf) in enumerate(F.tree.allleaves)
         @spawn if !isempty(leaf.tgt_points) # race condition, with counters, but not necessary to be accurate
-            leaf_comp_count = multiply_multipoles!(y, fact, leaf, x, α, β)
+            # multi = @views (x isa AbstractVector) ? multipoles[:, i] : multipoles[:, :, i]
+            leaf_comp_count = multiply_multipoles!(y, F, multipoles, leaf, x, α, β)
             comp_count = comp_count .+ leaf_comp_count
         end
     end
@@ -37,20 +38,60 @@ function _mul!(y::AbstractVecOrMat, fact::MultipoleFactorization, x::AbstractVec
     return y
 end
 
-function multiply_multipoles!(y, fact, leaf, x, α::Real, β::Real)
+function allocate_multipoles(F::MultipoleFactorization, x::AbstractVector)
+    T = transformation_eltype(F)
+    zeros(T, (nmultipoles(F), length(F.tree.allnodes)))
+end
+
+function allocate_multipoles(F::MultipoleFactorization, X::AbstractMatrix)
+    T = transformation_eltype(F)
+    zeros(T, (nmultipoles(F), size(X, 2), length(F.tree.allnodes)))
+end
+
+# computes multipoles and stores them in place
+function compute_multipoles!(multipoles::AbstractMatrix, F::MultipoleFactorization, x::AbstractVector)
+    @. multipoles = 0
+    @sync for (i, node) in enumerate(F.tree.allnodes) # computes all multipoles
+        if !isempty(node.s2o)
+            @spawn begin
+                x_far = @view x[node.src_point_indices]
+                multi = @view multipoles[:, i]
+                mul!(multi, node.s2o, x_far)
+            end
+        end
+    end
+    return multipoles
+end
+
+function compute_multipoles!(multipoles::AbstractArray{<:Number, 3}, F::MultipoleFactorization, x::AbstractMatrix)
+    @. multipoles = 0
+    @sync for (i, node) in enumerate(F.tree.allnodes) # computes all multipoles
+        if !isempty(node.s2o)
+            @spawn begin
+                x_far = @view x[node.src_point_indices, :]
+                multi = @view multipoles[:, :, i]
+                mul!(multi, node.s2o, x_far)
+            end
+        end
+    end
+    return multipoles
+end
+
+function multiply_multipoles!(y, F::MultipoleFactorization, multipoles,
+                              leaf::BallNode, x, α::Real, β::Real)
     compressed, not_compressed = 0, 0
     xi = @view x[leaf.near_indices, :]
     yi = @view y[leaf.tgt_point_indices, :]
     mul!(yi, leaf.near_mat, xi, α, β) # near field interaction
-    tot_far_points = get_tot_far_points(leaf)
+
     for far_node_idx in eachindex(leaf.far_nodes)
         far_node = leaf.far_nodes[far_node_idx]
         if isempty(far_node.src_points) continue end
         far_leaf_points = far_node.far_leaf_points
         far_src_points = length(far_node.src_points)
-        if compression_is_efficient(fact, far_node)
+        if compression_is_efficient(F, far_node)
             compressed += 1
-            xi = far_node.outgoing
+            xi = @views (x isa AbstractVector) ? multipoles[:, far_node.node_index] : multipoles[:, :, far_node.node_index]
         else
             not_compressed += 1
             xi = @view x[far_node.src_point_indices, :]
@@ -59,21 +100,6 @@ function multiply_multipoles!(y, fact, leaf, x, α::Real, β::Real)
         multiply_helper!(yi, o2i, xi, α)
     end
     return compressed, not_compressed
-end
-
-function compute_multipoles!(y, fact, x, thread_safe::Union{Val{false}, Val{true}} = Val(true))
-    @sync for node in fact.tree.allnodes # computes all multipoles
-        if !isempty(node.s2o)
-            @spawn begin
-                x_far_src = @views x isa AbstractVector ? x[node.src_point_indices] : x[node.src_point_indices, :]
-                if thread_safe isa Val{true}
-                    node.outgoing = node.s2o * x_far_src # thread safe
-                else
-                    mul!(node.outgoing, node.s2o, x_far_src) # WARNING: this is not thread-safe (multiply several vectors in parallel)
-                end
-            end
-        end
-    end
 end
 
 # fallback
@@ -99,41 +125,42 @@ function multiply_helper!(yi::AbstractVecOrMat{<:Real}, o2i::AbstractMatrix{<:Co
 end
 
 # makes sure sizes of arguments for matrix multiplication agree
-function _checksizes(y::AbstractVecOrMat, fact::MultipoleFactorization, x::AbstractVecOrMat)
-    if size(fact, 2) ≠ size(x, 1)
-        s = "second dimension of fact, $(size(fact, 2)), does not match length of x, $(length(x))"
+function _checksizes(y::AbstractVecOrMat, F::MultipoleFactorization, x::AbstractVecOrMat)
+    if size(F, 2) ≠ size(x, 1)
+        s = "second dimension of F, $(size(F, 2)), does not match length of x, $(length(x))"
         throw(DimensionMismatch(s))
-    elseif size(y, 1) ≠ size(fact, 1)
-         s = "first dimension of fact, $(size(fact, 1)), does not match length of y, $(length(y))"
+    elseif size(y, 1) ≠ size(F, 1)
+         s = "first dimension of F, $(size(F, 1)), does not match length of y, $(length(y))"
          throw(DimensionMismatch(s))
     elseif size(y, 2) ≠ size(x, 2)
         s = "second dimension of y, $(size(y, 2)), does not match second dimension of x, $(size(x, 2)))"
     end
 end
 
-function conj_grad(fact::MultipoleFactorization, b::Array{Float64, 1};
+############################### conjugate gradient solver ######################
+function conj_grad(F::MultipoleFactorization, b::AbstractVector;
                    max_iter::Int = 128, tol::Real = 1e-3, precond::Bool = true, verbose::Bool = false)
-    conj_grad!(zero(b), fact, b, max_iter = max_iter, tol = tol, precond = precond, verbose = verbose)
+    conj_grad!(zero(b), F, b, max_iter = max_iter, tol = tol, precond = precond, verbose = verbose)
 end
 
-function conj_grad!(x::AbstractVector, fact::MultipoleFactorization, b::AbstractVector;
+function conj_grad!(x::AbstractVector, F::MultipoleFactorization, b::AbstractVector;
                     max_iter::Int = 128, tol::Real = 1e-3, precond::Bool = true, verbose::Bool = false)
-    Ax = all(==(0), b) ? zero(x) : fact * x
+    Ax = all(==(0), b) ? zero(x) : F * x
     r = b - Ax
-    z = approx_inv(fact, r)
+    z = approx_inv(F, r)
     p = copy(z)
     Ap = similar(p)
     rsold = dot(r, z)
 
     for i in 1:max_iter
-        mul!(Ap, fact, p)
+        mul!(Ap, F, p)
 
         alpha = rsold / dot(p, Ap)
         @. x = x + alpha * p
         @. r = r - alpha * Ap
 
         # if precond # what else changes?
-        approx_inv!(z, fact, r)
+        approx_inv!(z, F, r)
         # end
         rsnew = dot(r, z)
         verbose && println(i, " res ", rsnew)
@@ -144,9 +171,9 @@ function conj_grad!(x::AbstractVector, fact::MultipoleFactorization, b::Abstract
     return x
 end
 
-approx_inv(fact::MultipoleFactorization, b::AbstractVector) = approx_inv!(zero(b), fact, b)
-function approx_inv!(total::AbstractVector, fact::MultipoleFactorization, b::AbstractVector)
-    @sync for cell in fact.tree.allnodes
+approx_inv(F::MultipoleFactorization, b::AbstractVector) = approx_inv!(zero(b), F, b)
+function approx_inv!(total::AbstractVector, F::MultipoleFactorization, b::AbstractVector)
+    @sync for cell in F.tree.allnodes
         A = cell.diag_block
         if A isa Factorization && prod(size(A)) > 0
             @spawn begin # IDEA: cell.tgt_point_indices ≡ cell.src_point_indices || throw()

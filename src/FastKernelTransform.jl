@@ -36,10 +36,7 @@ include("rectangular_tree.jl")
 # include("square_tree.jl")
 # include("triangular_tree.jl")
 #######################################
-# IDEA: define default parameters here, add to constructor definitions
-const default_max_dofs_per_leaf = 256
-const default_precond_paramt = 2default_max_dofs_per_leaf
-const default_trunc_param = 5
+include("factorization_parameters.jl")
 include("fmm_matrix.jl")
 include("multipole_factorization.jl")
 include("outgoing2incoming.jl")

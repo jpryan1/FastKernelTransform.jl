@@ -9,12 +9,13 @@ function LazyMultipoleMatrix{T}(generator::G, n::Int, m::Int) where {T, G}
     LazyMultipoleMatrix{T, G}(generator, n, m)
 end
 Base.size(L::LazyMultipoleMatrix) = (L.n, L.m)
-LinearAlgebra.Matrix(A::LazyMultipoleMatrix) = A.generator() # instantiates matrix when needed
+LinearAlgebra.Matrix(A::LazyMultipoleMatrix) = Matrix(A.generator()) # instantiates matrix when needed
+LinearAlgebra.AbstractMatrix(A::LazyMultipoleMatrix) = A.generator() # instantiates matrix when needed
 function LinearAlgebra.mul!(y::AbstractVector, A::LazyMultipoleMatrix, x::AbstractVector, α::Real = 1, β::Real = 0)
-    mul!(y, Matrix(A), x, α, β) # multiply
+    mul!(y, AbstractMatrix(A), x, α, β) # multiply
 end
 function LinearAlgebra.mul!(y::AbstractMatrix, A::LazyMultipoleMatrix, x::AbstractMatrix, α::Real = 1, β::Real = 0)
-    mul!(y, Matrix(A), x, α, β) # multiply
+    mul!(y, AbstractMatrix(A), x, α, β) # multiply
 end
 
 using LinearAlgebra: checksquare

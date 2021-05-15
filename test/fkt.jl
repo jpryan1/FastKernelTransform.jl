@@ -5,7 +5,7 @@ using FastKernelTransform
 using TimerOutputs
 using Test
 
-using FastKernelTransform: FmmMatrix, factorize
+using FastKernelTransform: FmmMatrix, factorize, FactorizationParameters
 using FastKernelTransform: uniform_data, gaussian_mixture_data, two_bump_data
 using CovarianceFunctions
 using CovarianceFunctions: EQ, Exp, Cauchy, Lengthscale, difference
@@ -28,12 +28,16 @@ FastKernelTransform.get_correction(::typeof(ek)) = ek
 atol = 1e-3
 rtol = 1e-3
 verbose = true
+lazy = false
+
 # test driver
 function fkt_test(kernels, x, y, max_dofs_per_leaf, precond_param, trunc_param,
                   names = nothing; verbose::Bool = true)
     for (i, k) in enumerate(kernels)
         verbose && println(names[i])
-        mat = FmmMatrix(k, x, max_dofs_per_leaf, precond_param, trunc_param)
+        params = FactorizationParameters(max_dofs_per_leaf = max_dofs_per_leaf,
+                precond_param = precond_param, trunc_param = trunc_param, lazy = lazy, verbose = verbose)
+        mat = FmmMatrix(k, x, params)
         fact = factorize(mat)
         kern_mat  = k.(x, permutedims(x))
         bbar = *(fact, y, verbose = verbose)
@@ -52,8 +56,12 @@ end
         x = data_generator(n, d)
         variance = exp.(randn(n)) # additive diagonal
         k = Exp()
-        mat = FmmMatrix(k, x, max_dofs_per_leaf, precond_param, trunc_param, variance)
+        params = FactorizationParameters(max_dofs_per_leaf = max_dofs_per_leaf,
+                precond_param = precond_param, trunc_param = trunc_param, lazy = lazy, verbose = verbose)
+        mat = FmmMatrix(k, x, variance, params)
+
         fact = factorize(mat)
+        
         @test size(fact) == (n, n)
         @test size(fact, 1) == n
         @test size(fact, 2) == n
@@ -65,7 +73,7 @@ end
         K = gramian(k, x)
         c = K * y
         @. c += variance * y
-        @test isapprox(b, c, rtol = rtol)
+        @test isapprox(b, c, rtol = rtol) # fails!
         # indexing
         for _ in 1:16
             i, j = rand(1:n, 2)
@@ -106,7 +114,7 @@ end
         fkt_test(kernels, x, Y, max_dofs_per_leaf, precond_param, trunc_param, names)
     end
 
-    @testset "rectangle" begin
+    @testset "rectangular matrix" begin
         n, d = 4096, 3
         max_dofs_per_leaf = 512  # When to stop in tree decomposition
         precond_param     = 1024  # Size of diag blocks to inv for preconditioner
@@ -116,7 +124,9 @@ end
         y = rand(n+4) # Start with random data values at each point
         kernels = (eq, ek, Cauchy()) # (es, eq, ek, Cauchy())
         names = ("EQ", "Exp", "Cauchy") # ["Electro", "EQ", "Exp", "Cauchy"]
-        mat = FmmMatrix(ek, x1, x2, max_dofs_per_leaf, precond_param, trunc_param)
+        params = FactorizationParameters(max_dofs_per_leaf = max_dofs_per_leaf,
+                precond_param = precond_param, trunc_param = trunc_param, lazy = lazy, verbose = verbose)
+        mat = FmmMatrix(ek, x1, x2, params)
         fact = factorize(mat)
         kern_mat  = ek.(x1, permutedims(x2))
         bbar = *(fact, y, verbose = verbose)
@@ -137,7 +147,9 @@ using FastKernelTransform: conj_grad
     k = ek
     names = "Exp"
     variance = fill(1e-4, n)
-    mat = FmmMatrix(k, x, max_dofs_per_leaf, precond_param, trunc_param, variance)
+    params = FactorizationParameters(max_dofs_per_leaf = max_dofs_per_leaf,
+            precond_param = precond_param, trunc_param = trunc_param, lazy = lazy, verbose = verbose)
+    mat = FmmMatrix(k, x, variance, params)
     fact = factorize(mat)
     b = fact * y
     rtol = 1e-3

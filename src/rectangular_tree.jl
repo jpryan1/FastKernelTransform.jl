@@ -11,25 +11,32 @@ mutable struct BallNode{PT<:AbstractVector{<:AbstractVector{<:Real}},
                       # ST<:AbstractMatrix{<:Number},
                       # OIT<:AbstractVector{AbstractMatrix{<:Number}},
                       CT}
-    is_precond_node::Bool  # is Node whose diag block is inv'd for precond TODO may be unnecessary
+
+    node_index::Int # index in allnodes vector of tree
     dimension::Int
+
     tgt_points::PT # how to keep this type general? (i.e. subarray) + 1d?
     tgt_point_indices::PIT
-    near_indices::PIT
+
+    near_indices::PIT # these are indices of points
     src_points::PT
     src_point_indices::PIT
+
     neighbors::NT
+    neighbor_indices::PIT # indices of neighbors in tree.allnodes
+
     far_nodes::NT
     far_leaf_points::Int
-    outgoing::AbstractVecOrMat{<:Number}  # This is an array of multipole coefficients, created at matvec time
     near_mat::AbstractMatrix # TODO: think about how to handle lazy / dense matrices elegantly
     diag_block::DT
     # Below are source2outgoing and outgoing2incoming mats, created at factor time
     s2o::AbstractMatrix
     o2i::AbstractVector # {AbstractMatrix{<:Number}} # TODO: think about how to handle lazy / dense matrices elegantly
-    left_child # can be BallNode or Nothing
-    right_child # can be BallNode or Nothing
-    parent # can be BallNode or Nothing
+
+    left_child::Union{BallNode, Nothing} # can be BallNode or Nothing
+    right_child::Union{BallNode, Nothing} # can be BallNode or Nothing
+    parent::Union{BallNode, Nothing} # can be BallNode or Nothing
+
     center::CT
     com::CT
     splitter_normal # nothing if leaf
@@ -38,16 +45,18 @@ mutable struct BallNode{PT<:AbstractVector{<:AbstractVector{<:Real}},
 end
 
 # constructor convenience
-function BallNode(isprecond::Bool, dimension::Int, ctr::AbstractVector{<:Real},
+# TODO: pass lazy parameter to allocate appropriate types for s2o, o2i ...
+
+function BallNode(node_idx::Int, dimension::Int, ctr::AbstractVector{<:Real},
                   tgt_points::AbstractVecOfVec{<:Real}, tgt_point_indices::AbstractVector{<:Int},
-                  src_points::AbstractVecOfVec{<:Real}, src_point_indices::AbstractVector{<:Int},
-                  outgoing_length::Int, sidelens)
+                  src_points::AbstractVecOfVec{<:Real}, src_point_indices::AbstractVector{<:Int}, sidelens)
   near_indices = zeros(Int, 0)
   neighbors = Vector(undef, 0)
+  neighbor_indices = zeros(Int, 0)
+
   far_nodes = Vector(undef, 0)
   far_leaf_points = 0
   # T = eltype(tgt_points[1]) # TODO get type someway else
-  outgoing = zeros(Complex{Float64}, outgoing_length)
   near_mat = zeros(0, 0)
   diag_block = cholesky(zeros(0, 0), Val(true), check = false) # TODO this forces the DT type in NodeData to be a Cholesky, should it?
   s2o = zeros(Complex{Float64}, 0, 0)
@@ -56,47 +65,20 @@ function BallNode(isprecond::Bool, dimension::Int, ctr::AbstractVector{<:Real},
       ctr = MVector(ctr) # needs to be mutable
   end
   com = zero(ctr)
-  BallNode(isprecond, dimension, tgt_points, tgt_point_indices,
-           near_indices, src_points, src_point_indices, neighbors, far_nodes, far_leaf_points, outgoing,
-           near_mat, diag_block, s2o, o2i, nothing, nothing, nothing, ctr, com, nothing, sidelens, -1)
+  BallNode(node_idx, dimension, tgt_points, tgt_point_indices,
+           near_indices, src_points, src_point_indices, neighbors, neighbor_indices,
+           far_nodes, far_leaf_points, near_mat, diag_block, s2o, o2i,
+           nothing, nothing, nothing, ctr, com, nothing, sidelens, -1)
 end
 
 # calculates the total number of far points for a given leaf # TODO: deprecate?
 function get_tot_far_points(leaf::BallNode)
     isempty(leaf.far_nodes) ? 0 : sum(node->length(node.src_points), leaf.far_nodes)
 end
-
-struct Tree{T<:Real, R<:BallNode, V<:AbstractVector{<:BallNode}}
-    dimension::Int64
-    root::R
-    max_dofs_per_leaf::Int64
-    allnodes::V
-    allleaves::V
-    neighbor_scale::T
-end
-
 isleaf(node::BallNode) = node.splitter_normal == nothing
 
-function plane_intersects_sphere(plane_center, splitter_normal,
-        sphere_center, sphere_leafrad)
-  sphere_right_pole = sphere_center + sphere_leafrad * splitter_normal
-  sphere_left_pole = sphere_center - sphere_leafrad * splitter_normal
-  return (dot(sphere_right_pole - plane_center, splitter_normal)
-          * dot(sphere_left_pole - plane_center, splitter_normal) < 0)
-end
-
-
-function is_ancestor_of(leaf, node)
-  cur = leaf
-  while cur.parent != nothing
-    if cur.parent == node return true end
-    cur = cur.parent
-  end
-  return false
-end
-
 # calculates points of source and its neighborhood
-function source_neighborhood_points(leaf)
+function source_neighborhood_points(leaf::BallNode)
     src_points = leaf.src_points
     src_neighbor = [neighbor.src_points for neighbor in leaf.neighbors]
     # src_neighbor = (neighbor.src_points for neighbor in leaf.neighbors)
@@ -107,13 +89,66 @@ end
 source_points(leaf) = leaf.src_point
 target_points(leaf) = leaf.tgt_points
 
-function source_neighborhood_indices!(leaf)
+function source_neighborhood_indices!(leaf::BallNode)
     src_indices = leaf.src_point_indices
     src_indices = vcat(src_indices, [neighbor.src_point_indices for neighbor in leaf.neighbors]...)
     leaf.near_indices = src_indices
     # src_indices = vcat(src_indices, (neighbor.src_point_indices for neighbor in leaf.neighbors)...)
     # src_indices = ApplyVector(vcat, src_indices, (neighbor.src_point_indices for neighbor in leaf.neighbors)...)
     return src_indices
+end
+
+################################ tree structure ################################
+struct Tree{T<:Real, R<:BallNode, V<:AbstractVector{<:BallNode}}
+    dimension::Int64
+    root::R
+    max_dofs_per_leaf::Int64
+    allnodes::V
+    allleaves::V
+    neighbor_scale::T
+end
+
+function initialize_tree(tgt_points, src_points, max_dofs_per_leaf,
+                         neighbor_scale::Real = 1/2; barnes_hut::Bool = false, verbose::Bool = false)
+    dimension = isempty(tgt_points) ? src_points : length(tgt_points[1])
+    center = sum(vcat(tgt_points, src_points)) / (length(tgt_points) + length(src_points))
+    root_sidelen = maximum((maximum(abs, difference(pt, center)) for pt in vcat(tgt_points, src_points)))
+    root = BallNode(1, dimension, center, tgt_points, collect(1:length(tgt_points)),
+      src_points, collect(1:length(src_points)), [2.01*root_sidelen for i in 1:dimension])
+
+    allnodes = [root]
+    allleaves = fill(root, 0)
+    bt = Tree(dimension, root, max_dofs_per_leaf, allnodes, allleaves, neighbor_scale)
+    if (length(tgt_points) + length(src_points)) > 2max_dofs_per_leaf
+        rec_split!(bt, root)
+    end
+
+    for node in bt.allnodes
+        if isleaf(node)
+            push!(bt.allleaves, node)
+        end
+    end
+    compute_near_far_nodes!(bt)
+    barnes_hut && compute_center_of_mass!(bt)
+    verbose && print_tree_statistics(bt)
+    return bt
+end
+
+function plane_intersects_sphere(plane_center, splitter_normal,
+        sphere_center, sphere_leafrad)
+  sphere_right_pole = sphere_center + sphere_leafrad * splitter_normal
+  sphere_left_pole = sphere_center - sphere_leafrad * splitter_normal
+  return (dot(sphere_right_pole - plane_center, splitter_normal)
+          * dot(sphere_left_pole - plane_center, splitter_normal) < 0)
+end
+
+function is_ancestor_of(leaf, node)
+  cur = leaf
+  while cur.parent != nothing
+    if cur.parent == node return true end
+    cur = cur.parent
+  end
+  return false
 end
 
 # Compute neighbor lists (note: ONLY FOR LEAVES at this time)
@@ -172,7 +207,6 @@ end
 
 
 function rec_split!(bt, node)
-
   # pt_L = find_farthest(node.center, vcat(node.tgt_points, node.src_points))
   # pt_R = find_farthest(pt_L,  vcat(node.tgt_points, node.src_points))
   # splitter_normal = pt_R-pt_L
@@ -264,14 +298,17 @@ function rec_split!(bt, node)
   new_sidelens = copy(node.sidelens)
   new_sidelens[best_d] /= 2
 
-  left_node = BallNode(false, node.dimension, left_center, left_tgt_points,
-              left_tgt_indices, left_src_points, left_src_indices, length(node.outgoing),new_sidelens)
-  right_node = BallNode(false, node.dimension, right_center, right_tgt_points,
-              right_tgt_indices, right_src_points, right_src_indices, length(node.outgoing), new_sidelens)
+  num_nodes = length(bt.allnodes)
+  left_node_idx = num_nodes + 1
+  right_node_idx = num_nodes + 2
+  left_node = BallNode(left_node_idx, node.dimension, left_center, left_tgt_points,
+              left_tgt_indices, left_src_points, left_src_indices, new_sidelens)
+  right_node = BallNode(right_node_idx, node.dimension, right_center, right_tgt_points,
+              right_tgt_indices, right_src_points, right_src_indices, new_sidelens)
 
     left_node.parent = node
     right_node.parent = node # IDEA: recurse before constructing node?
-    push!(bt.allnodes, left_node)
+    push!(bt.allnodes, left_node) # WARNING: not thread-safe
     push!(bt.allnodes, right_node)
     node.left_child = left_node
     node.right_child = right_node
@@ -289,32 +326,6 @@ function rec_split!(bt, node)
     #         @spawn rec_split!(bt, right_node)
     #     end
     # end
-end
-
-function initialize_tree(tgt_points, src_points, max_dofs_per_leaf, outgoing_length::Int,
-                         neighbor_scale::Real = 1/2; barnes_hut::Bool = false, verbose::Bool = false)
-    dimension = isempty(tgt_points) ? src_points : length(tgt_points[1])
-    center = sum(vcat(tgt_points, src_points)) / (length(tgt_points) + length(src_points))
-    root_sidelen = maximum((maximum(abs, difference(pt, center)) for pt in vcat(tgt_points, src_points)))
-    root = BallNode(false, dimension, center, tgt_points, collect(1:length(tgt_points)),
-      src_points, collect(1:length(src_points)), outgoing_length, [2.01*root_sidelen for i in 1:dimension])
-
-    allnodes = [root]
-    allleaves = fill(root, 0)
-    bt = Tree(dimension, root, max_dofs_per_leaf, allnodes, allleaves, neighbor_scale)
-    if (length(tgt_points) + length(src_points)) > 2max_dofs_per_leaf
-        rec_split!(bt, root)
-    end
-
-    for node in bt.allnodes
-        if isleaf(node)
-            push!(bt.allleaves, node)
-        end
-    end
-    compute_near_far_nodes!(bt)
-    barnes_hut && compute_center_of_mass!(bt)
-    verbose && print_tree_statistics(bt)
-    return bt
 end
 
 function compute_center_of_mass!(bt::Tree)
