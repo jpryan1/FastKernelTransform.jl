@@ -61,7 +61,7 @@ end
         mat = FmmMatrix(k, x, variance, params)
 
         fact = factorize(mat)
-        
+
         @test size(fact) == (n, n)
         @test size(fact, 1) == n
         @test size(fact, 2) == n

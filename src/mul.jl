@@ -28,7 +28,6 @@ function _mul!(y::AbstractVecOrMat, F::MultipoleFactorization, x::AbstractVecOrM
     compute_multipoles!(multipoles, F, x)
     @sync for (i, leaf) in enumerate(F.tree.allleaves)
         @spawn if !isempty(leaf.tgt_points) # race condition, with counters, but not necessary to be accurate
-            # multi = @views (x isa AbstractVector) ? multipoles[:, i] : multipoles[:, :, i]
             leaf_comp_count = multiply_multipoles!(y, F, multipoles, leaf, x, α, β)
             comp_count = comp_count .+ leaf_comp_count
         end
@@ -80,8 +79,8 @@ end
 function multiply_multipoles!(y, F::MultipoleFactorization, multipoles,
                               leaf::BallNode, x, α::Real, β::Real)
     compressed, not_compressed = 0, 0
-    xi = @view x[leaf.near_indices, :]
-    yi = @view y[leaf.tgt_point_indices, :]
+    xi = @views (x isa AbstractVector) ? x[leaf.near_point_indices] : x[leaf.near_point_indices, :]
+    yi = @views (y isa AbstractVector) ? y[leaf.tgt_point_indices] : y[leaf.tgt_point_indices, :]
     mul!(yi, leaf.near_mat, xi, α, β) # near field interaction
 
     for far_node_idx in eachindex(leaf.far_nodes)
@@ -94,7 +93,7 @@ function multiply_multipoles!(y, F::MultipoleFactorization, multipoles,
             xi = @views (x isa AbstractVector) ? multipoles[:, far_node.node_index] : multipoles[:, :, far_node.node_index]
         else
             not_compressed += 1
-            xi = @view x[far_node.src_point_indices, :]
+            xi = @views (x isa AbstractVector) ? x[far_node.src_point_indices] : x[far_node.src_point_indices, :]
         end
         o2i = leaf.o2i[far_node_idx]
         multiply_helper!(yi, o2i, xi, α)
@@ -113,8 +112,12 @@ function multiply_helper!(yi::AbstractVecOrMat{<:Real}, o2i::AbstractMatrix{<:Co
     mul!(yi, Re, xi, α, 1)
 end
 
-function multiply_helper!(yi::AbstractVecOrMat{<:Real}, o2i::LazyMultipoleMatrix, xi::AbstractVecOrMat{<:Complex}, α::Real)
-    multiply_helper!(yi, Matrix(o2i), xi, α)
+function multiply_helper!(yi::AbstractVecOrMat{<:Real}, o2i::LazyMultipoleMatrix{<:Complex}, xi::AbstractVecOrMat{<:Complex}, α::Real)
+    multiply_helper!(yi, AbstractMatrix(o2i), xi, α)
+end
+
+function multiply_helper!(yi::AbstractVecOrMat{<:Real}, o2i::LazyMultipoleMatrix{<:Complex}, xi::AbstractVecOrMat{<:Real}, α::Real)
+    multiply_helper!(yi, AbstractMatrix(o2i), xi, α)
 end
 
 function multiply_helper!(yi::AbstractVecOrMat{<:Real}, o2i::AbstractMatrix{<:Complex}, xi::AbstractVecOrMat{<:Complex}, α::Real)

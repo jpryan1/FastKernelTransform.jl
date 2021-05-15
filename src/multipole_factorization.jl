@@ -54,7 +54,8 @@ function MultipoleFactorization(kernel, tgt_points::AbstractVecOfVec{<:Real}, sr
     outgoing_length = length(keys(multi_to_single))
 
     tree = initialize_tree(tgt_points, src_points, params.max_dofs_per_leaf,
-            params.neighbor_scale, barnes_hut = params.barnes_hut, verbose = params.verbose)
+                        params.neighbor_scale, barnes_hut = params.barnes_hut,
+                        verbose = params.verbose, lazy = params.lazy)
 
     _k = kernel(tgt_points[1], src_points[1]) # sample evaluation used to determine element type
     symmetric = tgt_points === src_points
@@ -107,7 +108,7 @@ function transformation_mats!(F::MultipoleFactorization, leaf)
 
     T = transformation_eltype(F)
     M = islazy(F) ? LazyMultipoleMatrix{T} : Matrix{T}
-    leaf.o2i = Vector{M}(undef, length(leaf.far_nodes)) # TODO: need to determine type: are we lazy or not?
+    leaf.o2i = Vector{M}(undef, length(leaf.far_nodes))
     for far_node_idx in eachindex(leaf.far_nodes) # IDEA: parallelize?
         compute_far_interactions!(F, leaf, far_node_idx)
     end
@@ -163,7 +164,9 @@ function compute_compressed_interactions!(F::MultipoleFactorization, leaf, far_n
 end
 
 # returns center of box or center of mass of points in box for Barnes Hut
-get_center_point(F, node) = isbarneshut(F) ? node.com : node.center
+function get_center_point(F::MultipoleFactorization, node::BallNode)
+    isbarneshut(F) ? node.center_of_mass : node.center
+end
 
 ################################## helper #######################################
 function get_index_mapping_table(dimension::Int, trunc_param::Int, radial_fun_ranks::AbstractVector{Int})

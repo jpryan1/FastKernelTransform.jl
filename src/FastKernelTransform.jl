@@ -6,7 +6,7 @@ using StaticArrays
 using LazyArrays
 
 const AbstractVecOfVec{T} = AbstractVector{<:AbstractVector{T}}
-
+const AbstractMatOrFac{T} = Union{AbstractMatrix{T}, Factorization{T}}
 using Base.Threads: @threads, @spawn, @sync
 using SpecialFunctions
 using SpecialPolynomials: Gegenbauer
