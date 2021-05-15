@@ -1,8 +1,10 @@
-# this is the original FastKernelTransform file, separated it out from the test suite for rapid testing
+# WARNING: new version deprecates this, future profiling with @profile 
+
 using LinearAlgebra
 using FastKernelTransform
 using FastKernelTransform: gaussian_mixture_data, two_bump_data, uniform_data, unit_hypersphere
 using TimerOutputs
+using StaticArrays
 
 # Create the timer object
 to = TimerOutput()
@@ -12,7 +14,7 @@ max_dofs_per_leaf = 140  # When to stop in tree decomposition
 precond_param     = 0  # Size of diag blocks to inv for preconditioner
 
 trunc_param = 4
-dimension   = 3
+dimension   = 5
 
 # Parameter used for Gegenbauer polynomials
 alpha = dimension/2 - 1
@@ -22,6 +24,8 @@ alpha = dimension/2 - 1
 c = 10
 data_generator(n, d) = unit_hypersphere(n, d)
 points = data_generator(N, dimension)
+# S, T = length(points[1]), eltype(points[1])
+# points = [SVector{S, T}(p) for p in points]
 # A = rand(dimension, dimension)
 # Q, R = qr(A)
 # points = [Q*(vcat(point, zeros(dimension-3))) for point in points]
@@ -46,11 +50,11 @@ using FastKernelTransform: FmmMatrix, factorize
 
 mat = FmmMatrix(kernel, points, max_dofs_per_leaf, precond_param, trunc_param, to)
 @timeit to "Form factorization" begin
-    fact = factorize(mat)
+    @profile fact = factorize(mat)
 end
 
-@timeit to "Factorization matvec "       bbar      = *(fact, x, verbose = true)
-compare = true
+# @timeit to "Factorization matvec "       bbar      = *(fact, x, verbose = true)
+compare = false
 if compare
     @timeit to "Form dense matrix direct" begin
         @timeit to "allocation" kern_mat = zeros(length(points), length(points))

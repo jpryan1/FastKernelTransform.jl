@@ -24,38 +24,41 @@ function _mul!(y::AbstractVecOrMat, fact::MultipoleFactorization, x::AbstractVec
               α::Real = 1, β::Real = 0, thread_safe::Union{Val{true}, Val{false}} = Val(true);
               verbose::Bool = false)
     _checksizes(y, fact, x)
-    num_multipoles = length(keys(fact.multi_to_single))
-    total_compressed = 0
-    total_not_compressed = 0
-
+    comp_count = (0, 0) # total_compressed, total_not_compressed
     compute_multipoles!(y, fact, x, thread_safe)
-
     @sync for leaf in fact.tree.allleaves
-        if isempty(leaf.tgt_points) continue end
-        @spawn begin
-            xi = @view x[leaf.near_indices, :]
-            yi = @view y[leaf.tgt_point_indices, :]
-            mul!(yi, leaf.near_mat, xi, α, β) # near field interaction
-            tot_far_points = get_tot_far_points(leaf)
-            for far_node_idx in eachindex(leaf.far_nodes)
-                far_node = leaf.far_nodes[far_node_idx]
-                if isempty(far_node.src_points) continue end
-                far_leaf_points = far_node.far_leaf_points
-                far_src_points = length(far_node.src_points)
-                if (num_multipoles * (far_src_points + far_leaf_points)) < (far_src_points * far_leaf_points) # only use multipoles if it is efficient
-                    total_compressed += 1
-                    xi = far_node.outgoing
-                else
-                    total_not_compressed += 1
-                    xi = @view x[far_node.src_point_indices, :]
-                end
-                o2i = leaf.o2i[far_node_idx]
-                multiply_helper!(yi, o2i, xi, α)
-            end
+        @spawn if !isempty(leaf.tgt_points) # race condition, with counters, but not necessary to be accurate
+            leaf_comp_count = multiply_multipoles!(y, fact, leaf, x, α, β)
+            comp_count = comp_count .+ leaf_comp_count
         end
     end
+    total_compressed, total_not_compressed = comp_count
     verbose && println("Compressed: ",total_compressed," not compressed: ", total_not_compressed)
     return y
+end
+
+function multiply_multipoles!(y, fact, leaf, x, α::Real, β::Real)
+    compressed, not_compressed = 0, 0
+    xi = @view x[leaf.near_indices, :]
+    yi = @view y[leaf.tgt_point_indices, :]
+    mul!(yi, leaf.near_mat, xi, α, β) # near field interaction
+    tot_far_points = get_tot_far_points(leaf)
+    for far_node_idx in eachindex(leaf.far_nodes)
+        far_node = leaf.far_nodes[far_node_idx]
+        if isempty(far_node.src_points) continue end
+        far_leaf_points = far_node.far_leaf_points
+        far_src_points = length(far_node.src_points)
+        if compression_is_efficient(fact, far_node)
+            compressed += 1
+            xi = far_node.outgoing
+        else
+            not_compressed += 1
+            xi = @view x[far_node.src_point_indices, :]
+        end
+        o2i = leaf.o2i[far_node_idx]
+        multiply_helper!(yi, o2i, xi, α)
+    end
+    return compressed, not_compressed
 end
 
 function compute_multipoles!(y, fact, x, thread_safe::Union{Val{false}, Val{true}} = Val(true))
@@ -123,14 +126,14 @@ function conj_grad!(x::AbstractVector, fact::MultipoleFactorization, b::Abstract
     rsold = dot(r, z)
 
     for i in 1:max_iter
-        @timeit fact.to "CG MV" mul!(Ap, fact, p)
+        mul!(Ap, fact, p)
 
         alpha = rsold / dot(p, Ap)
         @. x = x + alpha * p
         @. r = r - alpha * Ap
 
         # if precond # what else changes?
-        @timeit fact.to "CG LS" approx_inv!(z, fact, r)
+        approx_inv!(z, fact, r)
         # end
         rsnew = dot(r, z)
         verbose && println(i, " res ", rsnew)

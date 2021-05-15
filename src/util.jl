@@ -1,6 +1,4 @@
 ################################# Linear Algebra ###############################
-const VecOfVec{T} = AbstractVector{<:AbstractVector{T}}
-
 # type to delay instantiating multipole matrices until multiply
 struct LazyMultipoleMatrix{T, G} <: AbstractMatrix{T}
     generator::G

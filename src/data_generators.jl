@@ -6,7 +6,6 @@ gaussian_data(n, d) = [randn(d) for _ in 1:n]
 # dimension d
 # number of centers c
 # σ is std of data around centers
-
 function min_dist_between_pts(centers)
     min_dist = Inf
     for i in 1:length(centers)
@@ -20,7 +19,6 @@ function min_dist_between_pts(centers)
     end
     return min_dist
 end
-
 
 function gaussian_mixture_data(n::Int, c::Int, d::Int, σ::Real)
     iszero(mod(n, c)) || throw("n ($n) is not divisible by c ($c)")

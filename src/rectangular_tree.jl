@@ -39,8 +39,8 @@ end
 
 # constructor convenience
 function BallNode(isprecond::Bool, dimension::Int, ctr::AbstractVector{<:Real},
-                  tgt_points::VecOfVec{<:Real}, tgt_point_indices::AbstractVector{<:Int},
-                  src_points::VecOfVec{<:Real}, src_point_indices::AbstractVector{<:Int},
+                  tgt_points::AbstractVecOfVec{<:Real}, tgt_point_indices::AbstractVector{<:Int},
+                  src_points::AbstractVecOfVec{<:Real}, src_point_indices::AbstractVector{<:Int},
                   outgoing_length::Int, sidelens)
   near_indices = zeros(Int, 0)
   neighbors = Vector(undef, 0)
@@ -52,9 +52,13 @@ function BallNode(isprecond::Bool, dimension::Int, ctr::AbstractVector{<:Real},
   diag_block = cholesky(zeros(0, 0), Val(true), check = false) # TODO this forces the DT type in NodeData to be a Cholesky, should it?
   s2o = zeros(Complex{Float64}, 0, 0)
   o2i = fill(s2o, 0)
+  if ctr isa SVector
+      ctr = MVector(ctr) # needs to be mutable
+  end
+  com = zero(ctr)
   BallNode(isprecond, dimension, tgt_points, tgt_point_indices,
            near_indices, src_points, src_point_indices, neighbors, far_nodes, far_leaf_points, outgoing,
-           near_mat, diag_block, s2o, o2i, nothing, nothing, nothing, ctr, zeros(length(ctr)), nothing, sidelens, -1)
+           near_mat, diag_block, s2o, o2i, nothing, nothing, nothing, ctr, com, nothing, sidelens, -1)
 end
 
 # calculates the total number of far points for a given leaf # TODO: deprecate?
@@ -71,10 +75,7 @@ struct Tree{T<:Real, R<:BallNode, V<:AbstractVector{<:BallNode}}
     neighbor_scale::T
 end
 
-function isleaf(node::BallNode)
-    return node.splitter_normal == nothing
-end
-
+isleaf(node::BallNode) = node.splitter_normal == nothing
 
 function plane_intersects_sphere(plane_center, splitter_normal,
         sphere_center, sphere_leafrad)
@@ -94,6 +95,26 @@ function is_ancestor_of(leaf, node)
   return false
 end
 
+# calculates points of source and its neighborhood
+function source_neighborhood_points(leaf)
+    src_points = leaf.src_points
+    src_neighbor = [neighbor.src_points for neighbor in leaf.neighbors]
+    # src_neighbor = (neighbor.src_points for neighbor in leaf.neighbors)
+    # src_neighbor = (neighbor.src_points for neighbor in leaf.neighbors)
+    src_points = vcat(leaf.src_points, src_neighbor...) # this allocates!
+    return src_points
+end
+source_points(leaf) = leaf.src_point
+target_points(leaf) = leaf.tgt_points
+
+function source_neighborhood_indices!(leaf)
+    src_indices = leaf.src_point_indices
+    src_indices = vcat(src_indices, [neighbor.src_point_indices for neighbor in leaf.neighbors]...)
+    leaf.near_indices = src_indices
+    # src_indices = vcat(src_indices, (neighbor.src_point_indices for neighbor in leaf.neighbors)...)
+    # src_indices = ApplyVector(vcat, src_indices, (neighbor.src_point_indices for neighbor in leaf.neighbors)...)
+    return src_indices
+end
 
 # Compute neighbor lists (note: ONLY FOR LEAVES at this time)
 function compute_near_far_nodes!(bt)
@@ -233,9 +254,11 @@ function rec_split!(bt, node)
   left_points = vcat(left_tgt_points, left_src_points)
   right_points = vcat(right_tgt_points, right_src_points)
 
+  # left_center = node.center isa SVector ? MVector(node.center)copy(node.center)
   left_center = copy(node.center)
   left_center[best_d] -= (node.sidelens[best_d]/4)
   right_center = copy(node.center)
+  #   right_center = node.center isa SVector ? MVector(node.center) : copy(node.center)
   right_center[best_d] += (node.sidelens[best_d]/4)
 
   new_sidelens = copy(node.sidelens)
@@ -296,7 +319,8 @@ end
 
 function compute_center_of_mass!(bt::Tree)
     for n in bt.allleaves
-        avg_pt = zeros(dimension)
+        isempty(n.tgt_points) && continue
+        avg_pt = zero(n.tgt_points[1])
         for pt in n.tgt_points
             avg_pt += pt
         end

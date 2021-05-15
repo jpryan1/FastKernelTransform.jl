@@ -4,7 +4,8 @@ using Statistics
 using BenchmarkTools
 using FastKernelTransform
 using FastKernelTransform: FmmMatrix
-using FastKernelTransform: uniform_data, gaussian_data, gaussian_mixture_data, embedded_data, unit_hypersphere
+using FastKernelTransform: uniform_data, gaussian_data, gaussian_mixture_data,
+        embedded_data, unit_hypersphere, interlocking_rings
 using CovarianceFunctions
 using TimerOutputs
 to = TimerOutput()
@@ -20,15 +21,17 @@ dimensions = collect(4:-1:2)
 f["sizes"] = sizes
 f["dimensions"] = dimensions
 
-σ = .2
-c = 10
-generator(n, d) = unit_hypersphere(n, d)
-create_group(f, "mixture parameters")
-g = f["mixture parameters"]
-g["c"] = c # number of centers
-g["sigma"] = σ # std of clusters
+# generator(n, d) = unit_hypersphere(n, d)
+# gen_names = ["hypersphere"]
+# σ = .2
+# c = 10
+# create_group(f, "mixture parameters")
+# g = f["mixture parameters"]
+# g["c"] = c # number of centers
+# g["sigma"] = σ # std of clusters
 
-gen_names = [ "mixture"]
+generator(n, d) = interlocking_rings(n, d)
+gen_names = ["interlocking_rings"]
 f["generators"] = gen_names
 
 precond_param     = 0  # Size of diag blocks to inv for preconditioner

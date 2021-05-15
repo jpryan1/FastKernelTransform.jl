@@ -5,9 +5,6 @@ using FastKernelTransform
 using TimerOutputs
 using Test
 
-# Create the timer object
-to = TimerOutput()
-
 using FastKernelTransform: FmmMatrix, factorize
 using FastKernelTransform: uniform_data, gaussian_mixture_data, two_bump_data
 using CovarianceFunctions
@@ -33,10 +30,10 @@ rtol = 1e-3
 verbose = true
 # test driver
 function fkt_test(kernels, x, y, max_dofs_per_leaf, precond_param, trunc_param,
-                  to, names = nothing; verbose::Bool = true)
+                  names = nothing; verbose::Bool = true)
     for (i, k) in enumerate(kernels)
         verbose && println(names[i])
-        mat = FmmMatrix(k, x, max_dofs_per_leaf, precond_param, trunc_param, to)
+        mat = FmmMatrix(k, x, max_dofs_per_leaf, precond_param, trunc_param)
         fact = factorize(mat)
         kern_mat  = k.(x, permutedims(x))
         bbar = *(fact, y, verbose = verbose)
@@ -55,7 +52,7 @@ end
         x = data_generator(n, d)
         variance = exp.(randn(n)) # additive diagonal
         k = Exp()
-        mat = FmmMatrix(k, x, max_dofs_per_leaf, precond_param, trunc_param, to, variance)
+        mat = FmmMatrix(k, x, max_dofs_per_leaf, precond_param, trunc_param, variance)
         fact = factorize(mat)
         @test size(fact) == (n, n)
         @test size(fact, 1) == n
@@ -85,11 +82,11 @@ end
         y = rand(n) # Start with random data values at each point
         kernels = (ek, Cauchy())
         names = ("Exp", "Cauchy")
-        fkt_test(kernels, x, y, max_dofs_per_leaf, precond_param, trunc_param, to, names)
+        fkt_test(kernels, x, y, max_dofs_per_leaf, precond_param, trunc_param, names)
         # matrix-matrix multiply
         m = 2
         Y = rand(n, m) # Start with random data values at each point
-        fkt_test(kernels, x, Y, max_dofs_per_leaf, precond_param, trunc_param, to, names)
+        fkt_test(kernels, x, Y, max_dofs_per_leaf, precond_param, trunc_param, names)
     end
 
     @testset "3d" begin
@@ -101,12 +98,12 @@ end
         y = rand(n) # Start with random data values at each point
         kernels = (eq, ek, Cauchy()) # (es, eq, ek, Cauchy())
         names = ("EQ", "Exp", "Cauchy") # ["Electro", "EQ", "Exp", "Cauchy"]
-        fkt_test(kernels, x, y, max_dofs_per_leaf, precond_param, trunc_param, to, names)
+        fkt_test(kernels, x, y, max_dofs_per_leaf, precond_param, trunc_param, names)
 
         # matrix-matrix multiply
         m = 2
         Y = rand(n, m) # Start with random data values at each point
-        fkt_test(kernels, x, Y, max_dofs_per_leaf, precond_param, trunc_param, to, names)
+        fkt_test(kernels, x, Y, max_dofs_per_leaf, precond_param, trunc_param, names)
     end
 
     @testset "rectangle" begin
@@ -119,7 +116,7 @@ end
         y = rand(n+4) # Start with random data values at each point
         kernels = (eq, ek, Cauchy()) # (es, eq, ek, Cauchy())
         names = ("EQ", "Exp", "Cauchy") # ["Electro", "EQ", "Exp", "Cauchy"]
-        mat = FmmMatrix(ek, x1, x2, max_dofs_per_leaf, precond_param, trunc_param, to)
+        mat = FmmMatrix(ek, x1, x2, max_dofs_per_leaf, precond_param, trunc_param)
         fact = factorize(mat)
         kern_mat  = ek.(x1, permutedims(x2))
         bbar = *(fact, y, verbose = verbose)
@@ -140,7 +137,7 @@ using FastKernelTransform: conj_grad
     k = ek
     names = "Exp"
     variance = fill(1e-4, n)
-    mat = FmmMatrix(k, x, max_dofs_per_leaf, precond_param, trunc_param, to, variance)
+    mat = FmmMatrix(k, x, max_dofs_per_leaf, precond_param, trunc_param, variance)
     fact = factorize(mat)
     b = fact * y
     rtol = 1e-3

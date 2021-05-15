@@ -88,9 +88,9 @@ version = "0.3.0"
 
 [[Compat]]
 deps = ["Base64", "Dates", "DelimitedFiles", "Distributed", "InteractiveUtils", "LibGit2", "Libdl", "LinearAlgebra", "Markdown", "Mmap", "Pkg", "Printf", "REPL", "Random", "SHA", "Serialization", "SharedArrays", "Sockets", "SparseArrays", "Statistics", "Test", "UUIDs", "Unicode"]
-git-tree-sha1 = "0a817fbe51c976de090aa8c997b7b719b786118d"
+git-tree-sha1 = "0900bc19193b8e672d9cd477e6cd92d9e7c02f99"
 uuid = "34da2185-b29b-5c13-b0c7-acf172513d20"
-version = "3.28.0"
+version = "3.29.0"
 
 [[CompilerSupportLibraries_jll]]
 deps = ["Artifacts", "Libdl"]
@@ -110,7 +110,7 @@ version = "0.6.1"
 
 [[CovarianceFunctions]]
 deps = ["DiffResults", "FillArrays", "ForwardDiff", "KroneckerProducts", "LazyArrays", "LazyInverse", "LazyLinearAlgebra", "LinearAlgebra", "LinearAlgebraExtensions", "SparseArrays", "SpecialFunctions", "TaylorSeries", "Test", "ToeplitzMatrices", "WoodburyIdentity"]
-git-tree-sha1 = "2d0c2aaf962b4e4e8b5db23b12cd353cc82990b8"
+git-tree-sha1 = "950e46fbf289523de6c816c47cc0d01b562a9088"
 repo-rev = "master"
 repo-url = "https://github.com/SebastianAment/CovarianceFunctions.jl.git"
 uuid = "b3329135-7958-41d4-bb02-e084c5a526bf"
@@ -180,9 +180,9 @@ version = "2.1.5+1"
 
 [[ElasticArrays]]
 deps = ["Adapt"]
-git-tree-sha1 = "395e36b5962bd11bf080f4fe06546cd26a34e0d8"
+git-tree-sha1 = "8a488b9c3c7778177f52775ecab30cbfd47bb4f3"
 uuid = "fdbdab4c-e67f-52f5-8c3f-e7b388dad3d4"
-version = "1.2.6"
+version = "1.2.7"
 
 [[Expat_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
@@ -820,14 +820,14 @@ version = "0.1.2"
 
 [[SphericalHarmonicArrays]]
 deps = ["OffsetArrays", "SphericalHarmonicModes", "TupleTools"]
-git-tree-sha1 = "f224893edfd3be0297f0daf5a95b781aab2175aa"
+git-tree-sha1 = "cd967f82c8fc35a42ceaced3a362aff1461150bf"
 uuid = "9dd28c12-4719-4e7d-b634-e7b733a6d046"
-version = "0.4.8"
+version = "0.4.9"
 
 [[SphericalHarmonicModes]]
-git-tree-sha1 = "9a23f40c76b1215fbd269b6a266627b68de577de"
+git-tree-sha1 = "63ec9f970a819b70a3c79ed59a1c36704c40e9e9"
 uuid = "0e9554e2-b38b-11e9-16d7-9d9abfec665a"
-version = "0.4.10"
+version = "0.4.13"
 
 [[SphericalHarmonics]]
 deps = ["ElasticArrays", "Printf", "SphericalHarmonicArrays", "SphericalHarmonicModes"]
@@ -837,9 +837,9 @@ version = "0.1.14"
 
 [[StaticArrays]]
 deps = ["LinearAlgebra", "Random", "Statistics"]
-git-tree-sha1 = "fb46e45ef2cade8be20bb445b3ffeca3c6d6f7d3"
+git-tree-sha1 = "c635017268fd51ed944ec429bcc4ad010bcea900"
 uuid = "90137ffa-7385-5640-81b9-e52037218182"
-version = "1.1.3"
+version = "1.2.0"
 
 [[Statistics]]
 deps = ["LinearAlgebra", "SparseArrays"]
@@ -911,10 +911,10 @@ uuid = "f269a46b-ccf7-5d73-abea-4c690281aa53"
 version = "1.5.5"
 
 [[TimerOutputs]]
-deps = ["Printf"]
-git-tree-sha1 = "32cdbe6cd2d214c25a0b88f985c9e0092877c236"
+deps = ["ExprTools", "Printf"]
+git-tree-sha1 = "bf8aacc899a1bd16522d0350e1e2310510d77236"
 uuid = "a759f4b9-e2f1-59dc-863e-4aeb61b1ea8f"
-version = "0.5.8"
+version = "0.5.9"
 
 [[ToeplitzMatrices]]
 deps = ["AbstractFFTs", "FFTW", "LinearAlgebra", "StatsBase"]
