@@ -175,6 +175,8 @@ end
     @test F.params.lazy == params.lazy
     @test F.params.verbose == params.verbose
 
+    F = fkt(G) # also execute with default options
+    @test F isa MultipoleFactorization
 end
 
 end # TestFastKernelTransform

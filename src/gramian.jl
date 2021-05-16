@@ -1,7 +1,7 @@
 using CovarianceFunctions
 function fkt(G::Gramian; max_dofs_per_leaf::Int = default_max_dofs_per_leaf,
     precond_param::Int = default_precond_paramt, trunc_param::Int = default_trunc_param,
-    lazy::Bool = default_neighbor_scale, neighbor_scale::Real = default_neighbor_scale,
+    lazy::Bool = default_lazy, neighbor_scale::Real = default_neighbor_scale,
     verbose::Bool = default_verbose, barnes_hut::Bool = (trunc_param == 0))
     params = FactorizationParameters(max_dofs_per_leaf, precond_param, trunc_param,
                                         neighbor_scale, lazy, verbose, barnes_hut)
