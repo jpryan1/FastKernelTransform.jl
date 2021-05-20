@@ -1,21 +1,23 @@
 # matrix-vector multiplication and solves for MultipoleFactorization type
 import LinearAlgebra: *, mul!, \
 function *(F::MultipoleFactorization, x::AbstractVector; verbose::Bool = false)
-    b = similar(x, size(F, 1))
+    # b = similar(x, size(F, 1))
+    b = zeros(length(x))
     mul!(b, F, x, verbose = verbose)
 end
 function *(F::MultipoleFactorization, X::AbstractMatrix; verbose::Bool = false)
-    B = similar(X, size(F, 1), size(X, 2))
+    # B = similar(X, size(F, 1), size(X, 2))
+    B = zeros(size(F,1), size(X,2))
     mul!(B, F, X, verbose = verbose)
 end
 \(F::MultipoleFactorization, b::AbstractVector) = conj_grad(F, b)
 
 function mul!(Y::AbstractVector, A::MultipoleFactorization, X::AbstractVector,
-              α::Real = 1, β::Real = 0; verbose::Bool = false)
+              α::Real = 1, β::Real = 1; verbose::Bool = false)
     _mul!(Y, A, X, α, β, verbose = verbose)
 end
 function mul!(Y::AbstractMatrix, A::MultipoleFactorization, X::AbstractMatrix,
-              α::Real = 1, β::Real = 0; verbose::Bool = false)
+              α::Real = 1, β::Real = 1; verbose::Bool = false)
     _mul!(Y, A, X, α, β, verbose = verbose)
 end
 
@@ -26,9 +28,11 @@ function _mul!(y::AbstractVecOrMat, F::MultipoleFactorization, x::AbstractVecOrM
     comp_count = (0, 0) # total_compressed, total_not_compressed
     multipoles = allocate_multipoles(F, x) # move upward?
     compute_multipoles!(multipoles, F, x)
-    @sync for (i, leaf) in enumerate(F.tree.allleaves)
-        @spawn if !isempty(leaf.tgt_points) # race condition, with counters, but not necessary to be accurate
-            leaf_comp_count = multiply_multipoles!(y, F, multipoles, leaf, x, α, β)
+    # Do near interactions, then far
+    # Far should be a traversal of the tree.
+     for (i, node) in enumerate(F.tree.allnodes)
+         if !isempty(node.tgt_points) # race condition, with counters, but not necessary to be accurate
+            leaf_comp_count = multiply_multipoles!(y, F, multipoles, node, x, α, β)
             comp_count = comp_count .+ leaf_comp_count
         end
     end
@@ -77,25 +81,28 @@ function compute_multipoles!(multipoles::AbstractArray{<:Number, 3}, F::Multipol
 end
 
 function multiply_multipoles!(y, F::MultipoleFactorization, multipoles,
-                              leaf::BallNode, x, α::Real, β::Real)
+                              node::BallNode, x, α::Real, β::Real)
     compressed, not_compressed = 0, 0
-    xi = @views (x isa AbstractVector) ? x[leaf.near_point_indices] : x[leaf.near_point_indices, :]
-    yi = @views (y isa AbstractVector) ? y[leaf.tgt_point_indices] : y[leaf.tgt_point_indices, :]
-    mul!(yi, leaf.near_mat, xi, α, β) # near field interaction
-
-    for far_node_idx in eachindex(leaf.far_nodes)
-        far_node = leaf.far_nodes[far_node_idx]
-        if isempty(far_node.src_points) continue end
-        far_leaf_points = far_node.far_leaf_points
-        far_src_points = length(far_node.src_points)
-        if compression_is_efficient(F, far_node)
+    yi = @views (y isa AbstractVector) ? y[node.near_point_indices] : y[node.near_point_indices, :]
+    xi = @views (x isa AbstractVector) ? x[node.src_point_indices] : x[node.src_point_indices, :]
+    if isleaf(node)
+        mul!(yi, node.near_mat, xi, α, β) # near field interaction
+    end
+    if length(node.far_point_indices) > 0
+        far_leaf_points = length(node.far_point_indices)
+        far_src_points = length(node.src_points)
+        if compression_is_efficient(F, node)
             compressed += 1
-            xi = @views (x isa AbstractVector) ? multipoles[:, far_node.node_index] : multipoles[:, :, far_node.node_index]
+            xi = @views (x isa AbstractVector) ? multipoles[:, node.node_index] : multipoles[:, :, node.node_index]
+            yi = @views (y isa AbstractVector) ? y[node.far_point_indices] : y[node.far_point_indices, :]
+
         else
             not_compressed += 1
-            xi = @views (x isa AbstractVector) ? x[far_node.src_point_indices] : x[far_node.src_point_indices, :]
+            # xi = @views (x isa AbstractVector) ? x[node.far_point_indices] : x[node.far_point_indices, :]
+            xi = @views (x isa AbstractVector) ? x[node.src_point_indices] : x[node.src_point_indices, :]
+            yi = @views (y isa AbstractVector) ? y[node.far_point_indices] : y[node.far_point_indices, :]
         end
-        o2i = leaf.o2i[far_node_idx]
+        o2i = node.o2i
         multiply_helper!(yi, o2i, xi, α)
     end
     return compressed, not_compressed

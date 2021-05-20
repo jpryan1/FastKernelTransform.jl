@@ -7,7 +7,6 @@ mutable struct BallNode{TGT<:Union{AbstractVecOfVec, AbstractMatrix},
                       SRC<:Union{AbstractVecOfVec, AbstractMatrix},
                       NT<:AbstractVector,
                       DT<:AbstractMatOrFac,
-                      O2I<:AbstractVector{<:AbstractMatrix},
                       CT<:AbstractVector{<:Number},
                       SIDE, XPRIME<:Real}
     node_index::Int # index in allnodes vector of tree
@@ -22,6 +21,7 @@ mutable struct BallNode{TGT<:Union{AbstractVecOfVec, AbstractMatrix},
     neighbor_indices::PIT # indices of neighbors in tree.allnodes
     near_point_indices::PIT # these are indices of points
 
+    far_point_indices::PIT
     far_nodes::NT
     far_leaf_points::Int
     near_mat::AbstractMatrix
@@ -29,7 +29,7 @@ mutable struct BallNode{TGT<:Union{AbstractVecOfVec, AbstractMatrix},
 
     # Below are source2outgoing and outgoing2incoming mats, created at factor time
     s2o::AbstractMatrix
-    o2i::O2I
+    o2i::AbstractMatrix
 
     # lazy_s20::AbstractMatrix
     # lazy_o2i::O2I
@@ -51,6 +51,7 @@ function BallNode(node_idx::Int, ctr::AbstractVector{<:Real},
                   src_points::AbstractVecOfVec{<:Real}, src_point_indices::AbstractVector{<:Int},
                   sidelens, lazy::Bool)
   near_point_indices = zeros(Int, 0)
+  far_point_indices = zeros(Int, 0)
   neighbors = Vector(undef, 0)
   neighbor_indices = zeros(Int, 0)
 
@@ -64,10 +65,10 @@ function BallNode(node_idx::Int, ctr::AbstractVector{<:Real},
   if lazy # TODO: pass lazy parameter to allocate appropriate types for s2o, o2i ...
       M = LazyMultipoleMatrix{T}
       s2o = zeros(0, 0)
-      o2i = Vector{M}(undef, 0)
+      o2i = zeros(0, 0)
   else
       s2o = zeros(T, 0, 0)
-      o2i = fill(s2o, 0)
+      o2i = zeros(T, 0, 0)
   end
 
   if ctr isa SVector
@@ -77,14 +78,14 @@ function BallNode(node_idx::Int, ctr::AbstractVector{<:Real},
   max_rprime = NaN
   BallNode(node_idx, tgt_points, tgt_point_indices,
            src_points, src_point_indices, neighbors, neighbor_indices, near_point_indices,
-           far_nodes, far_leaf_points, near_mat, diag_block, s2o, o2i,
+           far_point_indices,far_nodes, far_leaf_points, near_mat, diag_block, s2o, o2i,
            nothing, nothing, nothing, ctr, center_of_mass, nothing, sidelens, max_rprime)
 end
 
 # calculates the total number of far points for a given leaf # TODO: deprecate?
-function get_tot_far_points(leaf::BallNode)
-    isempty(leaf.far_nodes) ? 0 : sum(node->length(node.src_points), leaf.far_nodes)
-end
+# function get_tot_far_points(leaf::BallNode)
+#     isempty(leaf.far_nodes) ? 0 : sum(node->length(node.src_points), leaf.far_nodes)
+# end
 isleaf(node::BallNode) = node.splitter_normal == nothing
 
 source_points(leaf) = leaf.src_point
@@ -111,6 +112,7 @@ end
 
 ################################ tree structure ################################
 struct Tree{T<:Real, R<:BallNode, V<:AbstractVector{<:BallNode}}
+    kd_tree
     dimension::Int64
     root::R
     max_dofs_per_leaf::Int64
@@ -119,31 +121,55 @@ struct Tree{T<:Real, R<:BallNode, V<:AbstractVector{<:BallNode}}
     neighbor_scale::T
 end
 
+function print_tree_debug(node, level)
+    println("At level ", level)
+    println("node has ", length(node.tgt_points), " in box, ", length(node.near_point_indices),
+    " near, and ",length(node.far_point_indices), " far. ")
+    # println("tgt ",node.tgt_point_indices, " near ", node.near_point_indices, " far ",node.far_point_indices)
+    if !isleaf(node)
+        println("Going into left child")
+        print_tree_debug(node.left_child, level+1)
+        println("Going into right child")
+        print_tree_debug(node.right_child, level+1)
+    end
+    println("Going up")
+end
+
 function initialize_tree(tgt_points, src_points, max_dofs_per_leaf,
                          neighbor_scale::Real = 1/2;
                          barnes_hut::Bool = false, verbose::Bool = false, lazy::Bool = false)
+
+    kd_tree = NearestNeighbors.KDTree(hcat(tgt_points...))
+
     dimension = isempty(tgt_points) ? src_points : length(tgt_points[1])
     center = sum(vcat(tgt_points, src_points)) / (length(tgt_points) + length(src_points))
     root_sidelen = maximum((maximum(abs, difference(pt, center)) for pt in vcat(tgt_points, src_points)))
     node_index = 1
-    root = BallNode(node_index, center, tgt_points, collect(1:length(tgt_points)),
+    root = BallNode(node_index, center, tgt_points, collect(1:length(tgt_points)), #TODO it is unnecessary to store points in nodes like the root where interactions aren't computed
       src_points, collect(1:length(src_points)), [2.01*root_sidelen for i in 1:dimension], lazy)
 
     allnodes = [root]
     allleaves = fill(root, 0)
-    bt = Tree(dimension, root, max_dofs_per_leaf, allnodes, allleaves, neighbor_scale)
+    bt = Tree(kd_tree, dimension, root, max_dofs_per_leaf, allnodes, allleaves, neighbor_scale)
     if (length(tgt_points) + length(src_points)) > 2max_dofs_per_leaf
         rec_split!(bt, root, lazy)
     end
 
+    counter = 1
     for node in bt.allnodes
+        node.node_index = counter
+        counter +=1
+        if isnan(node.max_rprime)
+          node.max_rprime = maximum((norm(difference(pt, node.center)) for pt in node.src_points)) # pre-compute
+        end
         if isleaf(node)
             push!(bt.allleaves, node)
         end
     end
-    compute_near_far_nodes!(bt)
+    compute_far_point_indices!(bt, root)
+    # print_tree_debug(root, 1)
     barnes_hut && compute_center_of_mass!(bt)
-    verbose && print_tree_statistics(bt)
+    # verbose && print_tree_statistics(bt)
     return bt
 end
 
@@ -290,59 +316,84 @@ function is_ancestor_of(leaf, node)
   return false
 end
 
-# Compute neighbor lists (note: ONLY FOR LEAVES at this time)
-function compute_near_far_nodes!(bt)
-  for leaf in bt.allleaves
-    isempty(leaf.tgt_points) && continue
-    node_queue = [bt.root]
-    while length(node_queue) > 0
-      cur_node = pop!(node_queue)
-      if cur_node == leaf continue end
-      isempty(cur_node.src_points) && continue
-      # Are they overlapping
-      if !isleaf(cur_node) && is_ancestor_of(cur_node, leaf)
-        push!(node_queue, cur_node.right_child)
-        push!(node_queue, cur_node.left_child)
-        continue
-      end
 
-      # Is the ratio satisfied?
-      min_r_val = minimum((norm(difference(pt, cur_node.center)) for pt in leaf.tgt_points))
-      if isnan(cur_node.max_rprime)
-        cur_node.max_rprime = maximum((norm(difference(pt, cur_node.center)) for pt in cur_node.src_points)) # pre-compute
-      end
-      max_rprime_val = cur_node.max_rprime
-      # min_r_val = norm(difference(leaf.center, cur_node.center)) - norm(leaf.sidelens)/2
-      # max_rprime_val = norm(cur_node.sidelens)/2
-      if max_rprime_val/min_r_val > bt.neighbor_scale # no compression here
-        if isleaf(cur_node)
-          push!(leaf.neighbors, cur_node)
-        else
-          push!(node_queue, cur_node.right_child)
-          push!(node_queue, cur_node.left_child)
-        end
-      else # compression here
-        push!(leaf.far_nodes, cur_node)
-        cur_node.far_leaf_points += length(leaf.tgt_points)
-      end
+function compute_far_point_indices!(bt, node)
+    parent_near_indices = []
+    if node.parent != nothing
+        parent_near_indices = node.parent.near_point_indices
+    else
+        parent_near_indices = collect(1:length(node.tgt_points))
     end
-  end
+
+    rprime = node.max_rprime
+    min_dist_for_compress = rprime/bt.neighbor_scale
+
+    near_point_indices = intersect(parent_near_indices,
+        NearestNeighbors.inrange(bt.kd_tree, node.center, min_dist_for_compress))
+    far_point_indices = setdiff(parent_near_indices ,near_point_indices)
+
+    node.near_point_indices = collect(near_point_indices)
+    node.far_point_indices = collect(far_point_indices)
+
+    if !isleaf(node)
+        compute_far_point_indices!(bt, node.left_child)
+        compute_far_point_indices!(bt, node.right_child)
+    end
 end
+
+# Compute neighbor lists (note: ONLY FOR LEAVES at this time)
+# function compute_near_far_nodes!(bt)
+#   for leaf in bt.allleaves
+#     isempty(leaf.tgt_points) && continue
+#     node_queue = [bt.root]
+#     while length(node_queue) > 0
+#       cur_node = pop!(node_queue)
+#       if cur_node == leaf continue end
+#       isempty(cur_node.src_points) && continue
+#       # Are they overlapping
+#       if !isleaf(cur_node) && is_ancestor_of(cur_node, leaf)
+#         push!(node_queue, cur_node.right_child)
+#         push!(node_queue, cur_node.left_child)
+#         continue
+#       end
+#
+#       # Is the ratio satisfied?
+#       min_r_val = minimum((norm(difference(pt, cur_node.center)) for pt in leaf.tgt_points))
+#       if isnan(cur_node.max_rprime)
+#         cur_node.max_rprime = maximum((norm(difference(pt, cur_node.center)) for pt in cur_node.src_points)) # pre-compute
+#       end
+#       max_rprime_val = cur_node.max_rprime
+#       # min_r_val = norm(difference(leaf.center, cur_node.center)) - norm(leaf.sidelens)/2
+#       # max_rprime_val = norm(cur_node.sidelens)/2
+#       if max_rprime_val/min_r_val > bt.neighbor_scale # no compression here
+#         if isleaf(cur_node)
+#           push!(leaf.neighbors, cur_node)
+#         else
+#           push!(node_queue, cur_node.right_child)
+#           push!(node_queue, cur_node.left_child)
+#         end
+#       else # compression here
+#         push!(leaf.far_nodes, cur_node)
+#         cur_node.far_leaf_points += length(leaf.tgt_points)
+#       end
+#     end
+#   end
+# end
 
 
 using CovarianceFunctions: difference
-function find_farthest(far_pt, pts)
-    max_dist = 0
-    cur_farthest = far_pt
-    for p in pts
-        dist = norm(difference(p, far_pt))
-        if dist > max_dist
-            max_dist = dist
-            cur_farthest = p
-        end
-    end
-    return cur_farthest
-end
+# function find_farthest(far_pt, pts)
+#     max_dist = 0
+#     cur_farthest = far_pt
+#     for p in pts
+#         dist = norm(difference(p, far_pt))
+#         if dist > max_dist
+#             max_dist = dist
+#             cur_farthest = p
+#         end
+#     end
+#     return cur_farthest
+# end
 
 function compute_center_of_mass!(bt::Tree)
     for n in bt.allleaves
@@ -363,11 +414,11 @@ function print_tree_statistics(bt::Tree)
     tot_leaf_points = 0
     for n in bt.allleaves
         tot_leaf_points += length(n.tgt_points)
-        tot_far += length(n.far_nodes)
-        tot_near += length(n.neighbors)
+        # tot_far += length(n.far_nodes)
+        # tot_near += length(n.neighbors)
     end
-    num_neighbors = sum([length(node.neighbors) for node in bt.allleaves])
-    println("Avg neighborhood: ", num_neighbors/length(bt.allleaves))
+    # num_neighbors = sum([length(node.neighbors) for node in bt.allleaves])
+    # println("Avg neighborhood: ", num_neighbors/length(bt.allleaves))
     vec = [length(node.tgt_points) for node in bt.allleaves]
     println("Num leaves ", length(bt.allleaves))
     println("Num nodes ", length(bt.allnodes))
