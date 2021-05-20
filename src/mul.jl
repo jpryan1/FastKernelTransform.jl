@@ -13,11 +13,11 @@ end
 \(F::MultipoleFactorization, b::AbstractVector) = conj_grad(F, b)
 
 function mul!(Y::AbstractVector, A::MultipoleFactorization, X::AbstractVector,
-              α::Real = 1, β::Real = 1; verbose::Bool = false)
+              α::Real = 1, β::Real = 0; verbose::Bool = false)
     _mul!(Y, A, X, α, β, verbose = verbose)
 end
 function mul!(Y::AbstractMatrix, A::MultipoleFactorization, X::AbstractMatrix,
-              α::Real = 1, β::Real = 1; verbose::Bool = false)
+              α::Real = 1, β::Real = 0; verbose::Bool = false)
     _mul!(Y, A, X, α, β, verbose = verbose)
 end
 
@@ -86,7 +86,7 @@ function multiply_multipoles!(y, F::MultipoleFactorization, multipoles,
     yi = @views (y isa AbstractVector) ? y[node.near_point_indices] : y[node.near_point_indices, :]
     xi = @views (x isa AbstractVector) ? x[node.src_point_indices] : x[node.src_point_indices, :]
     if isleaf(node)
-        mul!(yi, node.near_mat, xi, α, β) # near field interaction
+        mul!(yi, node.near_mat, xi, α, 1) # near field interaction
     end
     if length(node.far_point_indices) > 0
         far_leaf_points = length(node.far_point_indices)

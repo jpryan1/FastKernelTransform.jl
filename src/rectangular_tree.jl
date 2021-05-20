@@ -11,7 +11,7 @@ mutable struct BallNode{
     tgt_point_indices::PIT
     src_point_indices::PIT
     near_point_indices::PIT # these are indices of points
-    near_point_indices_set::Set{<:Int} # these are indices of points
+    near_point_indices_set::BitSet # these are indices of points
     far_point_indices::PIT
     near_mat::AbstractMatrix
     diag_block::DT
@@ -40,7 +40,7 @@ function BallNode(node_idx::Int, ctr::AbstractVector{<:Real},
                    src_point_indices::AbstractVector{<:Int},
                   sidelens, lazy::Bool)
   near_point_indices = zeros(Int, 0)
-  near_point_indices_set = Set(near_point_indices)
+  near_point_indices_set = BitSet(near_point_indices)
 
   far_point_indices = zeros(Int, 0)
 
@@ -116,6 +116,7 @@ function initialize_tree(tgt_points, src_points, max_dofs_per_leaf,
                          barnes_hut::Bool = false, verbose::Bool = false, lazy::Bool = false)
 
     kd_tree = NearestNeighbors.KDTree(hcat(tgt_points...))
+    #hcat not efficient, instead pass pre-init matrix or vec of stat arrays
 
     dimension = isempty(tgt_points) ? src_points : length(tgt_points[1])
     center = sum(vcat(tgt_points, src_points)) / (length(tgt_points) + length(src_points))
@@ -132,27 +133,33 @@ function initialize_tree(tgt_points, src_points, max_dofs_per_leaf,
         rec_split!(bt, root, lazy)
     end
 
-    for node in bt.allnodes
+    for node in bt.allnodes # parallel over nodes?
         if isnan(node.max_rprime) && !isempty(node.src_point_indices)
           node_src_points = src_points[node.src_point_indices]
           node.max_rprime = maximum((norm(difference(pt, node.center)) for pt in node_src_points)) # pre-compute
         end
-        if isleaf(node)
+        if isleaf(node) #not par
             push!(bt.allleaves, node)
         end
     end
+
     to = TimerOutput()
-    bt.allnodes[1].near_point_indices_set = Set(collect(1:length(bt.tgt_points)))
+    bt.allnodes[1].near_point_indices_set = BitSet(1:length(bt.tgt_points))
     for node in bt.allnodes[2:end]
       rprime = node.max_rprime
       min_dist_for_compress = rprime/bt.neighbor_scale
-      @timeit to "inrange" inr = Set(NearestNeighbors.inrange(bt.kd_tree, node.center, min_dist_for_compress))
+      @timeit to "inrange" inrl = NearestNeighbors.inrange(bt.kd_tree, node.center, min_dist_for_compress)
+      @timeit to "setc" inr = BitSet(inrl)
+
       @timeit to "intersect" node.near_point_indices_set = intersect(node.parent.near_point_indices_set, inr)
       @timeit to "far" begin
         node.near_point_indices= collect(node.near_point_indices_set)
         node.far_point_indices = collect(setdiff(node.parent.near_point_indices_set, node.near_point_indices_set))
       end
     end
+    # examine difference in these costs across different levels.
+    # 1) init bd tree for every node, no need for intersection
+    # 2) Possible that new algorithmic idea could handle point set operations
 
     display(to)
     # print_tree_debug(root, 1)
