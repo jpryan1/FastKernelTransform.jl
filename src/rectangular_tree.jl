@@ -9,11 +9,9 @@ mutable struct BallNode{
                       SIDE, XPRIME<:Real}
     node_index::Int # index in allnodes vector of tree
     tgt_point_indices::PIT
-
     src_point_indices::PIT
-
     near_point_indices::PIT # these are indices of points
-
+    near_point_indices_set::Set{<:Int} # these are indices of points
     far_point_indices::PIT
     near_mat::AbstractMatrix
     diag_block::DT
@@ -42,6 +40,8 @@ function BallNode(node_idx::Int, ctr::AbstractVector{<:Real},
                    src_point_indices::AbstractVector{<:Int},
                   sidelens, lazy::Bool)
   near_point_indices = zeros(Int, 0)
+  near_point_indices_set = Set(near_point_indices)
+
   far_point_indices = zeros(Int, 0)
 
   # T = eltype(tgt_points[1]) # TODO get type someway else
@@ -64,7 +64,7 @@ function BallNode(node_idx::Int, ctr::AbstractVector{<:Real},
   center_of_mass = zero(ctr)
   max_rprime = NaN
   BallNode(node_idx, tgt_point_indices,
-           src_point_indices, near_point_indices,
+           src_point_indices, near_point_indices, near_point_indices_set,
            far_point_indices, near_mat, diag_block, s2o, o2i,
            nothing, nothing, nothing, ctr, center_of_mass, nothing, sidelens, max_rprime)
 end
@@ -141,7 +141,20 @@ function initialize_tree(tgt_points, src_points, max_dofs_per_leaf,
             push!(bt.allleaves, node)
         end
     end
-    compute_far_point_indices!(bt, root)
+    to = TimerOutput()
+    bt.allnodes[1].near_point_indices_set = Set(collect(1:length(bt.tgt_points)))
+    for node in bt.allnodes[2:end]
+      rprime = node.max_rprime
+      min_dist_for_compress = rprime/bt.neighbor_scale
+      @timeit to "inrange" inr = Set(NearestNeighbors.inrange(bt.kd_tree, node.center, min_dist_for_compress))
+      @timeit to "intersect" node.near_point_indices_set = intersect(node.parent.near_point_indices_set, inr)
+      @timeit to "far" begin
+        node.near_point_indices= collect(node.near_point_indices_set)
+        node.far_point_indices = collect(setdiff(node.parent.near_point_indices_set, node.near_point_indices_set))
+      end
+    end
+
+    display(to)
     # print_tree_debug(root, 1)
     barnes_hut && compute_center_of_mass!(bt)
     # verbose && print_tree_statistics(bt)
@@ -283,29 +296,7 @@ function is_ancestor_of(leaf, node)
 end
 
 
-function compute_far_point_indices!(bt, node)
-    parent_near_indices = []
-    if node.parent != nothing
-        parent_near_indices = node.parent.near_point_indices
-    else
-        parent_near_indices = collect(1:length(node.tgt_point_indices))
-    end
 
-    rprime = node.max_rprime
-    min_dist_for_compress = rprime/bt.neighbor_scale
-
-    near_point_indices = intersect(parent_near_indices,
-        NearestNeighbors.inrange(bt.kd_tree, node.center, min_dist_for_compress))
-    far_point_indices = setdiff(parent_near_indices ,near_point_indices)
-
-    node.near_point_indices = collect(near_point_indices)
-    node.far_point_indices = collect(far_point_indices)
-
-    if !isleaf(node)
-        compute_far_point_indices!(bt, node.left_child)
-        compute_far_point_indices!(bt, node.right_child)
-    end
-end
 
 # Compute neighbor lists (note: ONLY FOR LEAVES at this time)
 # function compute_near_far_nodes!(bt)

@@ -8,7 +8,7 @@ using StaticArrays
 using Profile
 
 
-N = 40000  # Number of points
+N = 80000  # Number of points
 dimension = 5
 
 params = FactorizationParameters(max_dofs_per_leaf = 128, precond_param = 0,

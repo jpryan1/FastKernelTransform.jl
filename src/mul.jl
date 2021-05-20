@@ -2,12 +2,12 @@
 import LinearAlgebra: *, mul!, \
 function *(F::MultipoleFactorization, x::AbstractVector; verbose::Bool = false)
     # b = similar(x, size(F, 1))
-    b = zeros(length(x))
+    b = zeros(typeof(x[1]), length(x))
     mul!(b, F, x, verbose = verbose)
 end
 function *(F::MultipoleFactorization, X::AbstractMatrix; verbose::Bool = false)
     # B = similar(X, size(F, 1), size(X, 2))
-    B = zeros(size(F,1), size(X,2))
+    B = zeros(typeof(X[1,1]), size(F,1), size(X,2))
     mul!(B, F, X, verbose = verbose)
 end
 \(F::MultipoleFactorization, b::AbstractVector) = conj_grad(F, b)
