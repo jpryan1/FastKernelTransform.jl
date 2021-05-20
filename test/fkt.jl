@@ -31,19 +31,31 @@ verbose = true
 lazy = false
 
 # test driver
-function fkt_test(kernels, x, y, max_dofs_per_leaf, precond_param, trunc_param,
-                  names = nothing; verbose::Bool = true)
+function fkt_test(kernels, x, y::AbstractVecOrMat, max_dofs_per_leaf::Int,
+    precond_param::Int, trunc_param::Int, names = kernels; verbose::Bool = true)
+    x_tgt, x_src = x, x
+    fkt_test(kernels, x_tgt, x_src, y, max_dofs_per_leaf, precond_param, trunc_param, names, verbose = verbose)
+end
+function fkt_test(kernels, x_tgt, x_src, y::AbstractVecOrMat, max_dofs_per_leaf::Int,
+    precond_param::Int, trunc_param::Int, names = kernels; verbose::Bool = true)
     for (i, k) in enumerate(kernels)
         verbose && println(names[i])
         params = FactorizationParameters(max_dofs_per_leaf = max_dofs_per_leaf,
                 precond_param = precond_param, trunc_param = trunc_param, lazy = lazy, verbose = verbose)
-        mat = FmmMatrix(k, x, params)
+        mat = FmmMatrix(k, x_tgt, x_src, params)
         fact = factorize(mat)
-        kern_mat  = k.(x, permutedims(x))
+        kern_mat  = k.(x_tgt, permutedims(x_src))
         bbar = *(fact, y, verbose = verbose)
         b = kern_mat * y
         verbose && println("relative error = $(norm(b-bbar)/norm(b))")
         @test isapprox(b, bbar, rtol = rtol, atol = atol)
+        # testing 5-arg mul!
+        α, β = randn(2)
+        n = length(x_tgt)
+        b = y isa AbstractVector ? randn(n) : randn(n, size(y, 2))
+        c = α * (kern_mat * y) + β * b
+        mul!(b, fact, y, α, β)
+        @test isapprox(b, c, rtol = rtol, atol = atol)
     end
 end
 
@@ -107,7 +119,6 @@ end
         kernels = (eq, ek, Cauchy()) # (es, eq, ek, Cauchy())
         names = ("EQ", "Exp", "Cauchy") # ["Electro", "EQ", "Exp", "Cauchy"]
         fkt_test(kernels, x, y, max_dofs_per_leaf, precond_param, trunc_param, names)
-
         # matrix-matrix multiply
         m = 2
         Y = rand(n, m) # Start with random data values at each point
@@ -119,20 +130,18 @@ end
         max_dofs_per_leaf = 512  # When to stop in tree decomposition
         precond_param     = 1024  # Size of diag blocks to inv for preconditioner
         trunc_param = 5
-        x1 = data_generator(n, d)
-        x2 = data_generator(n+4, d)
-        y = rand(n+4) # Start with random data values at each point
+        m = n+4
+        x_tgt = data_generator(n, d)
+        x_src = data_generator(m, d)
+        y = rand(m) # Start with random data values at each point
         kernels = (eq, ek, Cauchy()) # (es, eq, ek, Cauchy())
         names = ("EQ", "Exp", "Cauchy") # ["Electro", "EQ", "Exp", "Cauchy"]
-        params = FactorizationParameters(max_dofs_per_leaf = max_dofs_per_leaf,
-                precond_param = precond_param, trunc_param = trunc_param, lazy = lazy, verbose = verbose)
-        mat = FmmMatrix(ek, x1, x2, params)
-        fact = factorize(mat)
-        kern_mat  = ek.(x1, permutedims(x2))
-        bbar = *(fact, y, verbose = verbose)
-        b = kern_mat * y
-        verbose && println("relative error = $(norm(b-bbar)/norm(b))")
-        @test isapprox(b, bbar, rtol = rtol, atol = atol)
+        fkt_test(kernels, x_tgt, x_src, y, max_dofs_per_leaf, precond_param, trunc_param, names)
+
+        # matrix-matrix multiply
+        k = 2
+        Y = rand(m, k) # Start with random data values at each point
+        fkt_test(kernels, x_tgt, x_src, Y, max_dofs_per_leaf, precond_param, trunc_param, names)
     end
 end
 
