@@ -3,15 +3,13 @@
 # matrix vector products)
 # TODO: add element type to Factorization
 struct MultipoleFactorization{T, K, PAR <: FactorizationParameters,
-                MST, NT, TT<:Tree, TP, SP, FT, GT, RT<:AbstractVector{Int}, VT} <: Factorization{T}
+                MST, NT, TT<:Tree, FT, GT, RT<:AbstractVector{Int}, VT} <: Factorization{T}
     kernel::K
     params::PAR
 
     multi_to_single::MST
     normalizer_table::NT
     tree::TT
-    tgt_points::TP
-    src_points::SP
 
     get_F::FT
     get_G::GT
@@ -61,9 +59,9 @@ function MultipoleFactorization(kernel, tgt_points::AbstractVecOfVec{<:Real}, sr
     symmetric = tgt_points === src_points
 
     fact = MultipoleFactorization(kernel, params, multi_to_single,
-                    normalizer_table, tree, tgt_points, src_points,
+                    normalizer_table, tree,
                     get_F, get_G, radial_fun_ranks, variance, symmetric, _k)
-    compute_transformation_mats!(fact)
+    @time compute_transformation_mats!(fact)
     if symmetric && params.precond_param > 0
         compute_preconditioner!(fact, params.precond_param, variance)
     end
@@ -71,14 +69,14 @@ function MultipoleFactorization(kernel, tgt_points::AbstractVecOfVec{<:Real}, sr
 end
 
 ############################ basic properties ##################################
-Base.size(F::MultipoleFactorization) = (length(F.tgt_points), length(F.src_points))
+Base.size(F::MultipoleFactorization) = (length(F.tree.tgt_points), length(F.tree.src_points))
 Base.size(F::MultipoleFactorization, i::Int) = i > 2 ? 1 : size(F)[i]
 islazy(F::MultipoleFactorization) = F.params.lazy # typeof(F.params.lazy) == Val{true}
 isbarneshut(F::MultipoleFactorization) = F.params.barnes_hut
 LinearAlgebra.issymmetric(F::MultipoleFactorization) = F.symmetric
 Base.eltype(F::MultipoleFactorization{T}) where T = T
 function Base.getindex(F::MultipoleFactorization, i::Int, j::Int)
-    F.kernel(F.tgt_points[i], F.src_points[j])
+    F.kernel(F.tree.tgt_points[i], F.tree.src_points[j])
 end
 # number of multipoles of factorization
 nmultipoles(fact::MultipoleFactorization) = length(keys(fact.multi_to_single))
@@ -97,9 +95,9 @@ function compute_transformation_mats!(fact::MultipoleFactorization)
     # end
     for node in fact.tree.allnodes
         if isempty(node.tgt_point_indices) continue end
-        tgt_points = fact.tgt_points[node.tgt_point_indices]
+        tgt_points = fact.tree.tgt_points[node.tgt_point_indices]
         if isleaf(node)
-            src_points = fact.src_points[node.near_point_indices]
+            src_points = fact.tree.src_points[node.near_point_indices]
             node.near_mat = compute_interactions(fact, src_points, tgt_points) # near field interactions
             if issymmetric(fact) # if target and source are equal, need to apply diagonal correction
                 node.near_mat = diagonal_correction!(node.near_mat, fact.variance, node.tgt_point_indices)
@@ -108,9 +106,9 @@ function compute_transformation_mats!(fact::MultipoleFactorization)
         if compression_is_efficient(fact, node)
             compute_compressed_interactions!(fact, node)
         else
-            far_points = fact.tgt_points[node.far_point_indices]
-            if length(far_points) > 0
-                src_points = fact.src_points[node.src_point_indices]
+            far_points = fact.tree.tgt_points[node.far_point_indices]
+            if !isempty(far_points)
+                src_points = fact.tree.src_points[node.src_point_indices]
                 node.o2i = compute_interactions(fact, far_points, src_points)
             end
         end
@@ -176,13 +174,13 @@ function compute_compressed_interactions!(F::MultipoleFactorization, node)
     begin
         # source to outgoing matrix
         if isempty(node.s2o)
-            src_points = F.src_points[node.src_point_indices]
+            src_points = F.tree.src_points[node.src_point_indices]
             recentered_src = center.(src_points) # WARNING: BOTTLENECK, move out?
             node.s2o = source2outgoing(F, recentered_src)
         end
         # outgoing to incoming matrix
         begin
-            far_points = F.tgt_points[node.far_point_indices]
+            far_points = F.tree.tgt_points[node.far_point_indices]
             recentered_tgt = center.(far_points) # WARNING: BOTTLENECK
             node.o2i = outgoing2incoming(F, recentered_tgt)
         end

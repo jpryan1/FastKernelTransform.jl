@@ -21,6 +21,7 @@ using TimerOutputs
 
 using Statistics
 using CovarianceFunctions
+using NearestNeighbors
 
 export MultipoleFactorization
 export fkt # fast kernel transform
@@ -32,7 +33,6 @@ include("hyperspherical.jl")
 include("data_generators.jl")
 include("derivatives.jl")
 #######################################
-include("nn_ball_tree.jl")
 include("rectangular_tree.jl")
 # include("square_tree.jl")
 # include("triangular_tree.jl")
