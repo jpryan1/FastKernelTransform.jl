@@ -31,7 +31,7 @@ function _mul!(y::AbstractVecOrMat, F::MultipoleFactorization, x::AbstractVecOrM
     # Do near interactions, then far
     # Far should be a traversal of the tree.
      for (i, node) in enumerate(F.tree.allnodes)
-         if !isempty(node.tgt_points) # race condition, with counters, but not necessary to be accurate
+         if !isempty(node.tgt_point_indices) # race condition, with counters, but not necessary to be accurate
             leaf_comp_count = multiply_multipoles!(y, F, multipoles, node, x, α, β)
             comp_count = comp_count .+ leaf_comp_count
         end
@@ -90,7 +90,7 @@ function multiply_multipoles!(y, F::MultipoleFactorization, multipoles,
     end
     if length(node.far_point_indices) > 0
         far_leaf_points = length(node.far_point_indices)
-        far_src_points = length(node.src_points)
+        far_src_points = length(node.src_point_indices) #TODO why is this here
         if compression_is_efficient(F, node)
             compressed += 1
             xi = @views (x isa AbstractVector) ? multipoles[:, node.node_index] : multipoles[:, :, node.node_index]

@@ -96,6 +96,7 @@ function compute_transformation_mats!(fact::MultipoleFactorization)
     #     end
     # end
     for node in fact.tree.allnodes
+        if isempty(node.tgt_point_indices) continue end
         tgt_points = fact.tgt_points[node.tgt_point_indices]
         if isleaf(node)
             src_points = fact.src_points[node.near_point_indices]
@@ -109,7 +110,8 @@ function compute_transformation_mats!(fact::MultipoleFactorization)
         else
             far_points = fact.tgt_points[node.far_point_indices]
             if length(far_points) > 0
-                node.o2i = compute_interactions(fact, far_points, node.src_points)
+                src_points = fact.src_points[node.src_point_indices]
+                node.o2i = compute_interactions(fact, far_points, src_points)
             end
         end
     end
@@ -164,7 +166,7 @@ end
 function compression_is_efficient(F::MultipoleFactorization, node)
     # return false
     far_points = length(node.far_point_indices)
-    src_pts = length(node.src_points)
+    src_pts = length(node.src_point_indices)
     (nmultipoles(F) * (src_pts + far_points)) < (src_pts * far_points)
 end
 
@@ -174,7 +176,8 @@ function compute_compressed_interactions!(F::MultipoleFactorization, node)
     begin
         # source to outgoing matrix
         if isempty(node.s2o)
-            recentered_src = center.(node.src_points) # WARNING: BOTTLENECK, move out?
+            src_points = F.src_points[node.src_point_indices]
+            recentered_src = center.(src_points) # WARNING: BOTTLENECK, move out?
             node.s2o = source2outgoing(F, recentered_src)
         end
         # outgoing to incoming matrix
