@@ -99,9 +99,11 @@ function compute_transformation_mats!(fact::MultipoleFactorization)
         src_points = fact.tree.src_points[node.src_point_indices]
         if isleaf(node)
             tgt_points = fact.tree.tgt_points[node.near_point_indices]
-            node.near_mat = compute_interactions(fact, tgt_points, src_points) # near field interactions
-            if issymmetric(fact) # if target and source are equal, need to apply diagonal correction
-                node.near_mat = diagonal_correction!(node.near_mat, fact.variance, node.tgt_point_indices)
+            if !isempty(src_points)
+                node.near_mat = compute_interactions(fact, tgt_points, src_points) # near field interactions
+                if issymmetric(fact) # if target and source are equal, need to apply diagonal correction
+                    node.near_mat = diagonal_correction!(node.near_mat, fact.variance, node.tgt_point_indices)
+                end
             end
         end
         if compression_is_efficient(fact, node)
