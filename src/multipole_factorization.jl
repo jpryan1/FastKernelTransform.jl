@@ -51,8 +51,7 @@ function MultipoleFactorization(kernel, tgt_points::AbstractVecOfVec{<:Real}, sr
     multi_to_single = get_index_mapping_table(dimension, params.trunc_param, radial_fun_ranks)
     normalizer_table = squared_hyper_normalizer_table(dimension, params.trunc_param)
     outgoing_length = length(keys(multi_to_single))
-
-     tree = initialize_tree(tgt_points, src_points, params.max_dofs_per_leaf,
+    tree = initialize_tree(tgt_points, src_points, params.max_dofs_per_leaf,
                         params.neighbor_scale, barnes_hut = params.barnes_hut,
                         verbose = params.verbose, lazy = params.lazy)
 
@@ -62,7 +61,7 @@ function MultipoleFactorization(kernel, tgt_points::AbstractVecOfVec{<:Real}, sr
     fact = MultipoleFactorization(kernel, params, multi_to_single,
                     normalizer_table, tree,
                     get_F, get_G, radial_fun_ranks, variance, symmetric, to, _k)
-     compute_transformation_mats!(fact)
+    compute_transformation_mats!(fact)
     if symmetric && params.precond_param > 0
         compute_preconditioner!(fact, params.precond_param, variance)
     end
@@ -118,6 +117,7 @@ function transformation_eltype(F::MultipoleFactorization)
 end
 
 # computes interaction matrix, and stores it in near_mat, either lazily or densely
+# FIXME: tgt_points can still be empty
 function compute_interactions(F::MultipoleFactorization, tgt_points, src_points, T::Type = transformation_eltype(F))
     G = gramian(F.kernel, tgt_points, src_points)
     return islazy(F) ? LazyMultipoleMatrix{T}(()->G, size(G)...) : Matrix(G)

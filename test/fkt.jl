@@ -85,7 +85,7 @@ end
         K = gramian(k, x)
         c = K * y
         @. c += variance * y
-        @test isapprox(b, c, rtol = rtol) # fails!
+        @test isapprox(b, c, rtol = rtol)
         # indexing
         for _ in 1:16
             i, j = rand(1:n, 2)
@@ -130,7 +130,7 @@ end
         max_dofs_per_leaf = 512  # When to stop in tree decomposition
         precond_param     = 1024  # Size of diag blocks to inv for preconditioner
         trunc_param = 5
-        m = n+4
+        m = 128
         x_tgt = data_generator(n, d)
         x_src = data_generator(m, d)
         y = rand(m) # Start with random data values at each point
@@ -186,6 +186,32 @@ end
 
     F = fkt(G) # also execute with default options
     @test F isa MultipoleFactorization
+end
+
+@testset "small data test" begin
+    d = 2
+    n = 64
+    x = [randn(d) for _ in 1:n] # random input
+    σ = 1e-2
+    variance = fill(σ^2, n) # variance of output
+    params = FactorizationParameters(; max_dofs_per_leaf = 8, precond_param = 0, trunc_param = 5)
+    k = CovarianceFunctions.RQ(1.0)
+    K = FmmMatrix(k, x, variance, params)
+    F = fkt(K)
+    @test F isa MultipoleFactorization
+
+    l = 2
+    xs1 = range(-l, l, length = 64)
+    ns = length(xs1)
+    xs = [[xi, xj] for xi in xs1, xj in xs1]
+    xs = vec(xs)
+
+    for _ in 1:16 # this sometimes, but not always errors
+        x = [randn(d) for _ in 1:n] # random input
+        KS = FmmMatrix(k, xs, x, params)
+        FS = fkt(KS)
+        @test F isa MultipoleFactorization
+    end
 end
 
 end # TestFastKernelTransform
