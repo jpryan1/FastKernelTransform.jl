@@ -160,6 +160,7 @@ function initialize_tree(tgt_points, src_points, max_dofs_per_leaf,
           min_dist_for_compress = rprime/bt.neighbor_scale
           # @timeit to string("inrange", level)
           inrlist = NearestNeighbors.inrange(bt.kd_tree, node.center, min_dist_for_compress)
+          # reorder list so src_point_indices and near_point_indices start the same way for sym
           # @timeit to string("setc", level)
           inr = BitSet(inrlist)
 
@@ -167,8 +168,11 @@ function initialize_tree(tgt_points, src_points, max_dofs_per_leaf,
           node.near_point_indices_set = intersect(node.parent.near_point_indices_set, inr)
 
           # @timeit to string("far", level) begin
-            node.near_point_indices = collect(node.near_point_indices_set)
-            node.far_point_indices = collect(setdiff(node.parent.near_point_indices_set, node.near_point_indices_set))
+          #TODO(Sebastian) if we precondition, only do this reordering on precond
+          # nodes determined by precond param
+          proper_order_near = vcat(node.tgt_point_indices, collect(setdiff(node.near_point_indices_set, BitSet(node.tgt_point_indices))))
+          node.near_point_indices = collect(proper_order_near)
+          node.far_point_indices = collect(setdiff(node.parent.near_point_indices_set, node.near_point_indices_set))
           # end
         end
       end
