@@ -92,7 +92,7 @@ function multiply_multipoles!(y, F::MultipoleFactorization, multipoles,
     yi = @views (y isa AbstractVector) ? y[node.near_point_indices] : y[node.near_point_indices, :]
     xi = @views (x isa AbstractVector) ? x[node.src_point_indices] : x[node.src_point_indices, :]
 
-    if isleaf(node)
+    if isleaf(node) && !isempty(node.near_mat)
         tmp = zeros(eltype(yi), size(yi))
         mul!(tmp, node.near_mat, xi, 1, 1) # near field interaction
 
