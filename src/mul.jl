@@ -91,7 +91,7 @@ function multiply_multipoles!(y, F::MultipoleFactorization, multipoles,
 
     if isleaf(node)
         tmp = zeros(eltype(yi), size(yi))
-        mul!(yi, node.near_mat, xi, α, 1) # near field interaction
+        mul!(tmp, node.near_mat, xi, α, 1) # near field interaction
 
         lock(lk)
         try
