@@ -99,7 +99,7 @@ isleaf(node::BallNode) = node.splitter_normal == nothing
 
 ################################ tree structure ################################
 struct Tree{T<:Real, R<:BallNode, TGT<:AbstractVecOfVec, V<:AbstractVector{<:BallNode}}
-    kd_tree
+    kd_tree::KDTree
     tgt_points::TGT
     src_points::TGT
     dimension::Int64
@@ -145,17 +145,33 @@ function initialize_tree(tgt_points, src_points, max_dofs_per_leaf,
 
     to = TimerOutput()
     bt.allnodes[1].near_point_indices_set = BitSet(1:length(bt.tgt_points))
-    for node in bt.allnodes[2:end]
-      rprime = node.max_rprime
-      min_dist_for_compress = rprime/bt.neighbor_scale
-      @timeit to "inrange" inrl = NearestNeighbors.inrange(bt.kd_tree, node.center, min_dist_for_compress)
-      @timeit to "setc" inr = BitSet(inrl)
+    # get indices for all subtrees rooted at child of root.
 
-      @timeit to "intersect" node.near_point_indices_set = intersect(node.parent.near_point_indices_set, inr)
-      @timeit to "far" begin
-        node.near_point_indices= collect(node.near_point_indices_set)
-        node.far_point_indices = collect(setdiff(node.parent.near_point_indices_set, node.near_point_indices_set))
+    @timeit to "levels" levels = [nodes_above(root, node) for node in bt.allnodes]
+    top_lev = maximum(levels)
+    @timeit to "inrange" begin
+    for lev in 1:top_lev
+      level_nodes =  bt.allnodes[levels .== lev]
+      @sync for node in level_nodes
+        @spawn begin
+          level = nodes_above(root, node)
+          rprime = node.max_rprime
+          min_dist_for_compress = rprime/bt.neighbor_scale
+          # @timeit to string("inrange", level)
+          inrlist = NearestNeighbors.inrange(bt.kd_tree, node.center, min_dist_for_compress)
+          # @timeit to string("setc", level)
+          inr = BitSet(inrlist)
+
+          # @timeit to string("intersect", level)
+          node.near_point_indices_set = intersect(node.parent.near_point_indices_set, inr)
+
+          # @timeit to string("far", level) begin
+            node.near_point_indices = collect(node.near_point_indices_set)
+            node.far_point_indices = collect(setdiff(node.parent.near_point_indices_set, node.near_point_indices_set))
+          # end
+        end
       end
+    end
     end
     # examine difference in these costs across different levels.
     # 1) init bd tree for every node, no need for intersection
@@ -300,6 +316,18 @@ function is_ancestor_of(leaf, node)
     cur = cur.parent
   end
   return false
+end
+
+
+function nodes_above(root, node)
+  if node == root return 0 end
+  cur = node
+  counter = 1
+  while cur.parent != root
+    counter +=1
+    cur = cur.parent
+  end
+  return counter
 end
 
 

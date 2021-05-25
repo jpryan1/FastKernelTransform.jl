@@ -2,12 +2,12 @@
 import LinearAlgebra: *, mul!, \
 function *(F::MultipoleFactorization, x::AbstractVector; verbose::Bool = false)
     # b = similar(x, size(F, 1))
-    b = zeros(typeof(x[1]), length(x))
+    b = zeros(eltype(x), length(x))
     mul!(b, F, x, verbose = verbose)
 end
 function *(F::MultipoleFactorization, X::AbstractMatrix; verbose::Bool = false)
     # B = similar(X, size(F, 1), size(X, 2))
-    B = zeros(typeof(X[1,1]), size(F,1), size(X,2))
+    B = zeros(eltype(X), size(F,1), size(X,2))
     mul!(B, F, X, verbose = verbose)
 end
 \(F::MultipoleFactorization, b::AbstractVector) = conj_grad(F, b)
@@ -27,12 +27,15 @@ function _mul!(y::AbstractVecOrMat, F::MultipoleFactorization, x::AbstractVecOrM
     _checksizes(y, F, x)
     comp_count = (0, 0) # total_compressed, total_not_compressed
     multipoles = allocate_multipoles(F, x) # move upward?
+    # @timeit F.to "compute multipoles"
     compute_multipoles!(multipoles, F, x)
     # Do near interactions, then far
     # Far should be a traversal of the tree.
-     for (i, node) in enumerate(F.tree.allnodes)
-         if !isempty(node.tgt_point_indices) # race condition, with counters, but not necessary to be accurate
-            leaf_comp_count = multiply_multipoles!(y, F, multipoles, node, x, α, β)
+    lock = ReentrantLock()
+     @sync for (i, node) in enumerate(F.tree.allnodes)
+         @spawn if !isempty(node.src_point_indices) # race condition, with counters, but not necessary to be accurate
+            # @timeit F.to "multiply multipoles"
+            leaf_comp_count = multiply_multipoles!(y, F, multipoles, node, x, α, β, lock)
             comp_count = comp_count .+ leaf_comp_count
         end
     end
@@ -81,29 +84,46 @@ function compute_multipoles!(multipoles::AbstractArray{<:Number, 3}, F::Multipol
 end
 
 function multiply_multipoles!(y, F::MultipoleFactorization, multipoles,
-                              node::BallNode, x, α::Real, β::Real)
+                              node::BallNode, x, α::Real, β::Real, lk)
     compressed, not_compressed = 0, 0
     yi = @views (y isa AbstractVector) ? y[node.near_point_indices] : y[node.near_point_indices, :]
     xi = @views (x isa AbstractVector) ? x[node.src_point_indices] : x[node.src_point_indices, :]
+
     if isleaf(node)
+        tmp = zeros(eltype(yi), size(yi))
         mul!(yi, node.near_mat, xi, α, 1) # near field interaction
+
+        lock(lk)
+        try
+            # @timeit F.to "near mat"
+            yi .= yi+tmp
+        finally
+            unlock(lk)
+        end
     end
     if length(node.far_point_indices) > 0
         far_leaf_points = length(node.far_point_indices)
         far_src_points = length(node.src_point_indices) #TODO why is this here
+        yi = @views (y isa AbstractVector) ? y[node.far_point_indices] : y[node.far_point_indices, :]
+
         if compression_is_efficient(F, node)
             compressed += 1
             xi = @views (x isa AbstractVector) ? multipoles[:, node.node_index] : multipoles[:, :, node.node_index]
-            yi = @views (y isa AbstractVector) ? y[node.far_point_indices] : y[node.far_point_indices, :]
-
         else
             not_compressed += 1
-            # xi = @views (x isa AbstractVector) ? x[node.far_point_indices] : x[node.far_point_indices, :]
             xi = @views (x isa AbstractVector) ? x[node.src_point_indices] : x[node.src_point_indices, :]
-            yi = @views (y isa AbstractVector) ? y[node.far_point_indices] : y[node.far_point_indices, :]
         end
         o2i = node.o2i
-        multiply_helper!(yi, o2i, xi, α)
+        tmp = zeros(eltype(yi), size(yi))
+        multiply_helper!(tmp, o2i, xi, α)
+
+        lock(lk)
+        try
+            # @timeit F.to "o2i"
+            yi .= yi+tmp
+        finally
+            unlock(lk)
+        end
     end
     return compressed, not_compressed
 end

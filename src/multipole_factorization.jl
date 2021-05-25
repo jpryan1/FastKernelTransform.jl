@@ -17,26 +17,27 @@ struct MultipoleFactorization{T, K, PAR <: FactorizationParameters,
 
     variance::VT # additive diagonal correction
     symmetric::Bool
+    to::TimerOutput
     _k::T # sample output of kernel, only here to determine element type
 end
 
 # if only target points are passed, convert to src_points
 function MultipoleFactorization(kernel, tgt_points::AbstractVecOfVec{<:Real},
-                    params::FactorizationParameters = FactorizationParameters())
+                    params::FactorizationParameters = FactorizationParameters(), to::TimerOutput= TimerOutput())
     variance = nothing
-    MultipoleFactorization(kernel, tgt_points, tgt_points, variance, params)
+    MultipoleFactorization(kernel, tgt_points, tgt_points, variance, params, to)
 end
 
 function MultipoleFactorization(kernel, tgt_points::AbstractVecOfVec{<:Real},
-        variance, params::FactorizationParameters = FactorizationParameters())
-    MultipoleFactorization(kernel, tgt_points, tgt_points, variance, params)
+        variance, params::FactorizationParameters = FactorizationParameters(), to::TimerOutput= TimerOutput())
+    MultipoleFactorization(kernel, tgt_points, tgt_points, variance, params, to)
 end
 
 function MultipoleFactorization(kernel, tgt_points::AbstractVecOfVec{<:Real}, src_points::AbstractVecOfVec{<:Real},
-                                variance = nothing, params::FactorizationParameters = FactorizationParameters())
+                                variance = nothing, params::FactorizationParameters = FactorizationParameters(), to::TimerOutput= TimerOutput())
     dimension = length(tgt_points[1])
     get_F, get_G, radial_fun_ranks = init_F_G(kernel, dimension, params.trunc_param, Val(qrable(kernel)))
-    MultipoleFactorization(kernel, tgt_points, src_points, get_F, get_G, radial_fun_ranks, variance, params)
+    MultipoleFactorization(kernel, tgt_points, src_points, get_F, get_G, radial_fun_ranks, variance, params, to)
 end
 
 # takes arbitrary isotropic kernel
@@ -44,7 +45,7 @@ end
 # IDEA: given radial_fun_ranks, can we get rid of trunc_param?
 function MultipoleFactorization(kernel, tgt_points::AbstractVecOfVec{<:Real}, src_points::AbstractVecOfVec{<:Real},
                                 get_F, get_G, radial_fun_ranks::AbstractVector,
-                                variance = nothing, params = FactorizationParameters())
+                                variance = nothing, params = FactorizationParameters(), to::TimerOutput= TimerOutput())
     (params.max_dofs_per_leaf ≤ params.precond_param || (params.precond_param == 0)) || throw(DomainError("max_dofs_per_leaf < precond_param"))
     dimension = length(tgt_points[1])
     multi_to_single = get_index_mapping_table(dimension, params.trunc_param, radial_fun_ranks)
@@ -60,7 +61,7 @@ function MultipoleFactorization(kernel, tgt_points::AbstractVecOfVec{<:Real}, sr
 
     fact = MultipoleFactorization(kernel, params, multi_to_single,
                     normalizer_table, tree,
-                    get_F, get_G, radial_fun_ranks, variance, symmetric, _k)
+                    get_F, get_G, radial_fun_ranks, variance, symmetric, to, _k)
     @time compute_transformation_mats!(fact)
     if symmetric && params.precond_param > 0
         compute_preconditioner!(fact, params.precond_param, variance)
@@ -95,10 +96,10 @@ function compute_transformation_mats!(fact::MultipoleFactorization)
     # end
     for node in fact.tree.allnodes
         if isempty(node.tgt_point_indices) continue end
-        tgt_points = fact.tree.tgt_points[node.tgt_point_indices]
+        src_points = fact.tree.src_points[node.src_point_indices]
         if isleaf(node)
-            src_points = fact.tree.src_points[node.near_point_indices]
-            node.near_mat = compute_interactions(fact, src_points, tgt_points) # near field interactions
+            tgt_points = fact.tree.tgt_points[node.near_point_indices]
+            node.near_mat = compute_interactions(fact, tgt_points, src_points) # near field interactions
             if issymmetric(fact) # if target and source are equal, need to apply diagonal correction
                 node.near_mat = diagonal_correction!(node.near_mat, fact.variance, node.tgt_point_indices)
             end
@@ -108,7 +109,6 @@ function compute_transformation_mats!(fact::MultipoleFactorization)
         else
             far_points = fact.tree.tgt_points[node.far_point_indices]
             if !isempty(far_points)
-                src_points = fact.tree.src_points[node.src_point_indices]
                 node.o2i = compute_interactions(fact, far_points, src_points)
             end
         end
