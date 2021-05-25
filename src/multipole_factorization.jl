@@ -52,7 +52,7 @@ function MultipoleFactorization(kernel, tgt_points::AbstractVecOfVec{<:Real}, sr
     normalizer_table = squared_hyper_normalizer_table(dimension, params.trunc_param)
     outgoing_length = length(keys(multi_to_single))
 
-    @time tree = initialize_tree(tgt_points, src_points, params.max_dofs_per_leaf,
+     tree = initialize_tree(tgt_points, src_points, params.max_dofs_per_leaf,
                         params.neighbor_scale, barnes_hut = params.barnes_hut,
                         verbose = params.verbose, lazy = params.lazy)
 
@@ -62,7 +62,7 @@ function MultipoleFactorization(kernel, tgt_points::AbstractVecOfVec{<:Real}, sr
     fact = MultipoleFactorization(kernel, params, multi_to_single,
                     normalizer_table, tree,
                     get_F, get_G, radial_fun_ranks, variance, symmetric, to, _k)
-    @time compute_transformation_mats!(fact)
+     compute_transformation_mats!(fact)
     if symmetric && params.precond_param > 0
         compute_preconditioner!(fact, params.precond_param, variance)
     end

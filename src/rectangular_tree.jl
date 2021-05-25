@@ -114,7 +114,8 @@ end
 function initialize_tree(tgt_points, src_points, max_dofs_per_leaf,
                          neighbor_scale::Real = 1/2;
                          barnes_hut::Bool = false, verbose::Bool = false, lazy::Bool = false)
-
+    # Note that tgt_points are used for near and far points always
+    # TODO Sebastian (smarter thing than hcat here)
     kd_tree = NearestNeighbors.KDTree(hcat(tgt_points...))
     #hcat not efficient, instead pass pre-init matrix or vec of stat arrays
 
@@ -177,7 +178,7 @@ function initialize_tree(tgt_points, src_points, max_dofs_per_leaf,
     # 1) init bd tree for every node, no need for intersection
     # 2) Possible that new algorithmic idea could handle point set operations
 
-    display(to)
+    # display(to)
     # print_tree_debug(root, 1)
     barnes_hut && compute_center_of_mass!(bt)
     # verbose && print_tree_statistics(bt)
@@ -388,7 +389,7 @@ using CovarianceFunctions: difference
 # end
 
 function compute_center_of_mass!(bt::Tree)
-    for n in bt.allleaves
+    for n in bt.allnodes
       tgt_points=bt.tgt_points[n.tgt_point_indices]
         isempty(tgt_points) && continue
         avg_pt = zero(tgt_points[1])

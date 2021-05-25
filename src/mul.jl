@@ -2,7 +2,7 @@
 import LinearAlgebra: *, mul!, \
 function *(F::MultipoleFactorization, x::AbstractVector; verbose::Bool = false)
     # b = similar(x, size(F, 1))
-    b = zeros(eltype(x), length(x))
+    b = zeros(eltype(x), size(F, 1))
     mul!(b, F, x, verbose = verbose)
 end
 function *(F::MultipoleFactorization, X::AbstractMatrix; verbose::Bool = false)
@@ -14,16 +14,19 @@ end
 
 function mul!(Y::AbstractVector, A::MultipoleFactorization, X::AbstractVector,
               α::Real = 1, β::Real = 0; verbose::Bool = false)
-    _mul!(Y, A, X, α, β, verbose = verbose)
+    tmp = zeros(eltype(X), size(A,1))
+    _mul!(tmp, A, X, verbose = verbose)
+    Y .=  α*tmp + β*Y
 end
 function mul!(Y::AbstractMatrix, A::MultipoleFactorization, X::AbstractMatrix,
               α::Real = 1, β::Real = 0; verbose::Bool = false)
-    _mul!(Y, A, X, α, β, verbose = verbose)
+      tmp = zeros(eltype(X), size(A,1), size(X,2))
+      _mul!(tmp, A, X, verbose = verbose)
+      Y .=  α*tmp + β*Y
 end
-
 # IDEA: could pass data structure that reports how many compressions took place
-function _mul!(y::AbstractVecOrMat, F::MultipoleFactorization, x::AbstractVecOrMat,
-              α::Real = 1, β::Real = 0; verbose::Bool = false)
+function _mul!(y::AbstractVecOrMat, F::MultipoleFactorization, x::AbstractVecOrMat;
+               verbose::Bool = false)
     _checksizes(y, F, x)
     comp_count = (0, 0) # total_compressed, total_not_compressed
     multipoles = allocate_multipoles(F, x) # move upward?
@@ -35,12 +38,12 @@ function _mul!(y::AbstractVecOrMat, F::MultipoleFactorization, x::AbstractVecOrM
      @sync for (i, node) in enumerate(F.tree.allnodes)
          @spawn if !isempty(node.src_point_indices) # race condition, with counters, but not necessary to be accurate
             # @timeit F.to "multiply multipoles"
-            leaf_comp_count = multiply_multipoles!(y, F, multipoles, node, x, α, β, lock)
+            leaf_comp_count = multiply_multipoles!(y, F, multipoles, node, x, lock)
             comp_count = comp_count .+ leaf_comp_count
         end
     end
     total_compressed, total_not_compressed = comp_count
-    verbose && println("Compressed: ",total_compressed," not compressed: ", total_not_compressed)
+    # verbose && println("Compressed: ",total_compressed," not compressed: ", total_not_compressed)
     return y
 end
 
@@ -84,14 +87,14 @@ function compute_multipoles!(multipoles::AbstractArray{<:Number, 3}, F::Multipol
 end
 
 function multiply_multipoles!(y, F::MultipoleFactorization, multipoles,
-                              node::BallNode, x, α::Real, β::Real, lk)
+                              node::BallNode, x, lk)
     compressed, not_compressed = 0, 0
     yi = @views (y isa AbstractVector) ? y[node.near_point_indices] : y[node.near_point_indices, :]
     xi = @views (x isa AbstractVector) ? x[node.src_point_indices] : x[node.src_point_indices, :]
 
     if isleaf(node)
         tmp = zeros(eltype(yi), size(yi))
-        mul!(tmp, node.near_mat, xi, α, 1) # near field interaction
+        mul!(tmp, node.near_mat, xi, 1, 1) # near field interaction
 
         lock(lk)
         try
@@ -115,7 +118,7 @@ function multiply_multipoles!(y, F::MultipoleFactorization, multipoles,
         end
         o2i = node.o2i
         tmp = zeros(eltype(yi), size(yi))
-        multiply_helper!(tmp, o2i, xi, α)
+        multiply_helper!(tmp, o2i, xi, 1)
 
         lock(lk)
         try
