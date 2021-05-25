@@ -4,27 +4,29 @@ mutable struct FmmMatrix{K, V<:AbstractVector{<:AbstractVector{<:Real}}, VT, PAR
     src_points::V
     variance::VT
     params::PAR
+    to::TimerOutput
 end
 
 function FmmMatrix(kernel, tgt_points::AbstractVecOfVec{<:Real}, src_points::AbstractVecOfVec{<:Real},
-                   params::FactorizationParameters = FactorizationParameters())
+                   params::FactorizationParameters = FactorizationParameters(), to::TimerOutput = TimerOutput())
     variance = nothing
-    FmmMatrix(kernel, tgt_points, src_points, variance, params)
+    FmmMatrix(kernel, tgt_points, src_points, variance, params, to)
 end
 
-function FmmMatrix(kernel, points::AbstractVecOfVec{<:Real}, params::FactorizationParameters = FactorizationParameters())
+function FmmMatrix(kernel, points::AbstractVecOfVec{<:Real},
+    params::FactorizationParameters = FactorizationParameters(), to::TimerOutput= TimerOutput())
     variance = nothing
-    FmmMatrix(kernel, points, points, variance, params)
+    FmmMatrix(kernel, points, points, variance, params, to)
 end
 
 function FmmMatrix(kernel, points::AbstractVecOfVec{<:Real}, variance,
-                    params::FactorizationParameters = FactorizationParameters())
-    FmmMatrix(kernel, points, points, variance, params)
+                    params::FactorizationParameters = FactorizationParameters(), to::TimerOutput= TimerOutput())
+    FmmMatrix(kernel, points, points, variance, params, to)
 end
 
 # fast kernel transform
 function fkt(mat::FmmMatrix)
-    MultipoleFactorization(mat.kernel, mat.tgt_points, mat.src_points, mat.variance, mat.params)
+    MultipoleFactorization(mat.kernel, mat.tgt_points, mat.src_points, mat.variance, mat.params, mat.to)
 end
 
 # factorize only calls fkt if it is worth it

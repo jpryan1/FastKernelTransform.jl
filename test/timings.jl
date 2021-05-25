@@ -8,7 +8,7 @@ using StaticArrays
 using Profile
 
 
-N = 64000  # Number of points
+N = 80000  # Number of points
 dimension = 5
 
 params = FactorizationParameters(max_dofs_per_leaf = 128, precond_param = 0,
@@ -43,16 +43,16 @@ using FastKernelTransform: FmmMatrix, factorize
 
 mat = FmmMatrix(kernel, points, params)
 
-doprofile = true
+doprofile = false
 if doprofile
     @profile factorize(mat)
     # Profile.print(format = :flat, sortedby = :count, mincount = 100, combine = true)
-    Profile.print(format = :tree, maxdepth = 5, noisefloor = 2., mincount = 10, combine = true)
+    Profile.print(format = :tree, maxdepth = 20, noisefloor = 2., mincount = 10, combine = true)
     Profile.clear()
 end
 
 # Create the timer object
-dotime = false
+dotime = true
 if dotime
     to = TimerOutput()
     @timeit to "Form factorization" fact = factorize(mat)

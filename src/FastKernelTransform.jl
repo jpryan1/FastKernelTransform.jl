@@ -21,6 +21,7 @@ using TimerOutputs
 
 using Statistics
 using CovarianceFunctions
+using NearestNeighbors
 
 export MultipoleFactorization
 export fkt # fast kernel transform
