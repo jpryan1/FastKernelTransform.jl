@@ -99,7 +99,7 @@ function multiply_multipoles!(y, F::MultipoleFactorization, multipoles,
         lock(lk)
         try
             # @timeit F.to "near mat"
-            yi .= yi+tmp
+            @. yi += tmp
         finally
             unlock(lk)
         end
@@ -120,7 +120,7 @@ function multiply_multipoles!(y, F::MultipoleFactorization, multipoles,
         lock(lk)
         try
             # @timeit F.to "o2i"
-            yi .= yi+tmp
+            @. yi += tmp
         finally
             unlock(lk)
         end
