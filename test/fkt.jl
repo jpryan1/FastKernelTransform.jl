@@ -211,6 +211,14 @@ end
         KS = FmmMatrix(k, xs, x, params)
         FS = fkt(KS)
         @test F isa MultipoleFactorization
+        a = randn(n)
+        MS = k.(xs, permutedims(x))
+        println(sum(x->abs(x)>(1e-3), MS*a - FS*a))
+        println(norm(MS*a - FS*a))
+        println(maximum(abs, MS*a - FS*a))
+        @test isapprox(MS*a, FS*a, atol = atol, rtol = rtol)
+        # b = zeros(ns)
+        # @test isapprox(MS*a, mul!(b, FS, a), atol = atol, rtol = rtol)
     end
 end
 
