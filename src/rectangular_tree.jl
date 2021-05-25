@@ -75,8 +75,8 @@ end
 # end
 isleaf(node::BallNode) = node.splitter_normal == nothing
 
-# source_points(leaf) = leaf.src_point
-# target_points(leaf) = leaf.tgt_points
+source_points(tree, leaf) = @view tree.src_points[leaf.src_point_indices]
+target_points(tree, leaf) = @view tree.tgt_points[leaf.tgt_point_indices]
 
 # calculates points of source and its neighborhood
 # function source_neighborhood_points(leaf::BallNode)
