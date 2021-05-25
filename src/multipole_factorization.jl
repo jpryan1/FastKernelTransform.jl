@@ -87,19 +87,14 @@ function compute_transformation_mats!(fact::MultipoleFactorization)
 
     # For every node in tree, get radius of hypersphere as rprime, look for
     # points r such that rprime/r is not bad, and, if compression efficient,
-    # make s2o and (single) o2i matrix for node.
+    # make s2o and o2i matrix for node.
 
-    # @sync for leaf in fact.tree.allleaves
-    #     if !isempty(leaf.tgt_points)
-    #         @spawn transformation_mats!(fact, leaf)
-    #     end
-    # end
     for node in fact.tree.allnodes
         if isempty(node.tgt_point_indices) continue end
         src_points = fact.tree.src_points[node.src_point_indices]
         if isleaf(node)
-            tgt_points = fact.tree.tgt_points[node.near_point_indices]
             if !isempty(src_points)
+                tgt_points = fact.tree.tgt_points[node.near_point_indices]
                 node.near_mat = compute_interactions(fact, tgt_points, src_points) # near field interactions
                 if issymmetric(fact) # if target and source are equal, need to apply diagonal correction
                     node.near_mat = diagonal_correction!(node.near_mat, fact.variance, node.tgt_point_indices)
@@ -118,27 +113,6 @@ function compute_transformation_mats!(fact::MultipoleFactorization)
     return nothing
 end
 
-# better name? compute_transformation_matrices
-# function transformation_mats!(F::MultipoleFactorization, leaf)
-#     begin # IDEA: parallelize?
-#         src_points = source_neighborhood_points(leaf) # WARNING: BOTTLENECK
-#         tgt_points = target_points(leaf)
-#         leaf.near_mat = compute_interactions(F, tgt_points, src_points) # near field interactions
-#     end
-#
-#     source_neighborhood_indices!(leaf) # stores the indices of the source and neighborhood
-#     if issymmetric(F) # if target and source are equal, need to apply diagonal correction
-#         leaf.near_mat = diagonal_correction!(leaf.near_mat, F.variance, leaf.tgt_point_indices)
-#     end
-#
-#     T = transformation_eltype(F)
-#     M = islazy(F) ? LazyMultipoleMatrix{T} : Matrix{T}
-#     leaf.o2i = Vector{M}(undef, length(leaf.far_nodes))
-#     for far_node_idx in eachindex(leaf.far_nodes) # IDEA: parallelize?
-#         compute_far_interactions!(F, leaf, far_node_idx)
-#     end
-#     return F
-# end
 
 function transformation_eltype(F::MultipoleFactorization)
     T = eltype(F)
@@ -151,20 +125,9 @@ function compute_interactions(F::MultipoleFactorization, tgt_points, src_points,
     return islazy(F) ? LazyMultipoleMatrix{T}(()->G, size(G)...) : Matrix(G)
 end
 
-# function compute_far_interactions!(F::MultipoleFactorization, leaf, far_node_idx)
-#     far_node = leaf.far_nodes[far_node_idx]
-#     if isempty(far_node.src_points) return end
-#     if compression_is_efficient(F, far_node)
-#         compute_compressed_interactions!(F, leaf, far_node_idx)
-#     else
-#         leaf.o2i[far_node_idx] = compute_interactions(F, leaf.tgt_points, far_node.src_points)
-#     end
-#     return nothing
-# end
 
 # computes whether or not compressing the far interaction is more efficient than a direct multiply
 function compression_is_efficient(F::MultipoleFactorization, node)
-    # return false
     far_points = length(node.far_point_indices)
     src_pts = length(node.src_point_indices)
     (nmultipoles(F) * (src_pts + far_points)) < (src_pts * far_points)

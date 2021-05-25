@@ -105,8 +105,6 @@ function multiply_multipoles!(y, F::MultipoleFactorization, multipoles,
         end
     end
     if length(node.far_point_indices) > 0
-        far_leaf_points = length(node.far_point_indices)
-        far_src_points = length(node.src_point_indices) #TODO why is this here
         yi = @views (y isa AbstractVector) ? y[node.far_point_indices] : y[node.far_point_indices, :]
 
         if compression_is_efficient(F, node)
@@ -116,9 +114,8 @@ function multiply_multipoles!(y, F::MultipoleFactorization, multipoles,
             not_compressed += 1
             xi = @views (x isa AbstractVector) ? x[node.src_point_indices] : x[node.src_point_indices, :]
         end
-        o2i = node.o2i
         tmp = zeros(eltype(yi), size(yi))
-        multiply_helper!(tmp, o2i, xi, 1)
+        multiply_helper!(tmp, node.o2i, xi, 1)
 
         lock(lk)
         try

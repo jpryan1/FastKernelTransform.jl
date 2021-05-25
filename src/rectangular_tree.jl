@@ -2,6 +2,8 @@
 # matvec'ing faster due to precomputation and storage at factor time
 # IDEA: use NearestNeighbors.jl and StaticArrays to speed up tree construction
 # (has support for BallTrees)
+using CovarianceFunctions: difference
+
 mutable struct BallNode{
                       PIT<:AbstractVector{<:Int},
                       DT<:AbstractMatOrFac,
@@ -70,32 +72,12 @@ function BallNode(node_idx::Int, ctr::AbstractVector{<:Real},
 end
 
 # calculates the total number of far points for a given leaf # TODO: deprecate?
-# function get_tot_far_points(leaf::BallNode)
-#     isempty(leaf.far_nodes) ? 0 : sum(node->length(node.src_points), leaf.far_nodes)
-# end
+
 isleaf(node::BallNode) = node.splitter_normal == nothing
 
 source_points(tree, leaf) = @view tree.src_points[leaf.src_point_indices]
 target_points(tree, leaf) = @view tree.tgt_points[leaf.tgt_point_indices]
 
-# calculates points of source and its neighborhood
-# function source_neighborhood_points(leaf::BallNode)
-#     src_points = leaf.src_points
-#     src_neighbor = [neighbor.src_points for neighbor in leaf.neighbors]
-#     # src_neighbor = (neighbor.src_points for neighbor in leaf.neighbors)
-#     # src_indices = ApplyVector(vcat, src_neighbor, (neighbor.src_points for neighbor in leaf.neighbors)...)
-#     src_points = vcat(leaf.src_points, src_neighbor...) # this allocates!
-#     return src_points
-# end
-
-# function source_neighborhood_indices!(leaf::BallNode)
-#     src_indices = leaf.src_point_indices
-#     src_indices = vcat(src_indices, [neighbor.src_point_indices for neighbor in leaf.neighbors]...)
-#     leaf.near_point_indices = src_indices
-#     # src_indices = vcat(src_indices, (neighbor.src_point_indices for neighbor in leaf.neighbors)...)
-#     # src_indices = ApplyVector(vcat, src_indices, (neighbor.src_point_indices for neighbor in leaf.neighbors)...)
-#     return src_indices
-# end
 
 ################################ tree structure ################################
 struct Tree{T<:Real, R<:BallNode, TGT<:AbstractVecOfVec, V<:AbstractVector{<:BallNode}}
@@ -335,62 +317,6 @@ function nodes_above(root, node)
   return counter
 end
 
-
-
-
-# Compute neighbor lists (note: ONLY FOR LEAVES at this time)
-# function compute_near_far_nodes!(bt)
-#   for leaf in bt.allleaves
-#     isempty(leaf.tgt_points) && continue
-#     node_queue = [bt.root]
-#     while length(node_queue) > 0
-#       cur_node = pop!(node_queue)
-#       if cur_node == leaf continue end
-#       isempty(cur_node.src_points) && continue
-#       # Are they overlapping
-#       if !isleaf(cur_node) && is_ancestor_of(cur_node, leaf)
-#         push!(node_queue, cur_node.right_child)
-#         push!(node_queue, cur_node.left_child)
-#         continue
-#       end
-#
-#       # Is the ratio satisfied?
-#       min_r_val = minimum((norm(difference(pt, cur_node.center)) for pt in leaf.tgt_points))
-#       if isnan(cur_node.max_rprime)
-#         cur_node.max_rprime = maximum((norm(difference(pt, cur_node.center)) for pt in cur_node.src_points)) # pre-compute
-#       end
-#       max_rprime_val = cur_node.max_rprime
-#       # min_r_val = norm(difference(leaf.center, cur_node.center)) - norm(leaf.sidelens)/2
-#       # max_rprime_val = norm(cur_node.sidelens)/2
-#       if max_rprime_val/min_r_val > bt.neighbor_scale # no compression here
-#         if isleaf(cur_node)
-#           push!(leaf.neighbors, cur_node)
-#         else
-#           push!(node_queue, cur_node.right_child)
-#           push!(node_queue, cur_node.left_child)
-#         end
-#       else # compression here
-#         push!(leaf.far_nodes, cur_node)
-#         cur_node.far_leaf_points += length(leaf.tgt_points)
-#       end
-#     end
-#   end
-# end
-
-
-using CovarianceFunctions: difference
-# function find_farthest(far_pt, pts)
-#     max_dist = 0
-#     cur_farthest = far_pt
-#     for p in pts
-#         dist = norm(difference(p, far_pt))
-#         if dist > max_dist
-#             max_dist = dist
-#             cur_farthest = p
-#         end
-#     end
-#     return cur_farthest
-# end
 
 function compute_center_of_mass!(bt::Tree)
     for n in bt.allnodes
