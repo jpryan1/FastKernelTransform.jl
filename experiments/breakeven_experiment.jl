@@ -70,23 +70,23 @@ for k in eachindex(max_dofs_per_leaf_multiplier)
                 # factor benchmark
                 K = FmmMatrix(kernel, points, params, to)
                 bench = @benchmarkable fkt($K)
-                factor_times[exp_i, i, j, k] = minimum(run(bench, samples = 1)).time
+                factor_times[exp_i, i, j, k] = minimum(run(bench, samples = nsamples)).time
                 println("factor ", factor_times[exp_i, i, j, k] / nano )
                 # fast multiply benchmark
                 F = fkt(K)
                 bench = @benchmarkable mul!($b, $F, $y, verbose = $true)
-                fast_times[exp_i, i, j, k] = minimum(run(bench, samples = 1)).time
+                fast_times[exp_i, i, j, k] = minimum(run(bench, samples = nsamples)).time
                 println("fast ", fast_times[exp_i, i, j, k] / nano )
 
                 # lazy multiply benchmark
                 G = gramian(kernel, points)
                 bench = @benchmarkable mul!($bl, $G, $y)
-                lazy_times[exp_i, i, j, k] = minimum(run(bench, samples = 1)).time
+                lazy_times[exp_i, i, j, k] = minimum(run(bench, samples = nsamples)).time
                 println("lazy ", lazy_times[exp_i, i, j, k] / nano )
 
                 # dense multiply benchmark, includes instantiation
                 bench = @benchmarkable mul!($bd, Matrix($G), $y)
-                dense_times[exp_i, i, j, k] = minimum(run(bench, samples = 1)).time
+                dense_times[exp_i, i, j, k] = minimum(run(bench, samples = nsamples)).time
                 println("dense ", dense_times[exp_i, i, j, k] / nano )
             end
         end
