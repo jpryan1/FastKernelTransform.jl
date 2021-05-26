@@ -67,7 +67,7 @@ for k in eachindex(max_dofs_per_leaf_multiplier)
             for exp_i in 1:nexperiments
                 println("experiment ", exp_i)
                 points = generator(n, d) # generate data set
-
+                GC.gc()
                 # factor benchmark
                 K = FmmMatrix(kernel, points, params, to)
                 bench = @benchmarkable fkt($K)
@@ -86,6 +86,7 @@ for k in eachindex(max_dofs_per_leaf_multiplier)
                 # println("lazy ", lazy_times[exp_i, i, j, k] / nano )
 
                 # dense multiply benchmark, includes instantiation
+                GC.gc()
                 bench = @benchmarkable mul!($bd, Matrix($G), $y)
                 dense_times[exp_i, i, j, k] = minimum(run(bench, samples = nsamples)).time
                 println("dense ", dense_times[exp_i, i, j, k] / nano )

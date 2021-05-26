@@ -1,13 +1,11 @@
 # matrix-vector multiplication and solves for MultipoleFactorization type
 import LinearAlgebra: *, mul!, \
 function *(F::MultipoleFactorization, x::AbstractVector; verbose::Bool = false)
-    # b = similar(x, size(F, 1))
     b = zeros(eltype(x), size(F, 1))
     mul!(b, F, x, verbose = verbose)
 end
 function *(F::MultipoleFactorization, X::AbstractMatrix; verbose::Bool = false)
-    # B = similar(X, size(F, 1), size(X, 2))
-    B = zeros(eltype(X), size(F,1), size(X,2))
+    B = zeros(eltype(X), size(F, 1), size(X, 2))
     mul!(B, F, X, verbose = verbose)
 end
 \(F::MultipoleFactorization, b::AbstractVector) = conj_grad(F, b)

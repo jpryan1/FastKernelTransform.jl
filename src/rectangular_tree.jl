@@ -75,8 +75,10 @@ end
 
 isleaf(node::BallNode) = node.splitter_normal == nothing
 
-source_points(tree, leaf) = @view tree.src_points[leaf.src_point_indices]
-target_points(tree, leaf) = @view tree.tgt_points[leaf.tgt_point_indices]
+get_source_points(tree, leaf) = @view tree.src_points[leaf.src_point_indices]
+get_target_points(tree, leaf) = @view tree.tgt_points[leaf.tgt_point_indices]
+get_near_points(tree, leaf) = @view tree.tgt_points[leaf.near_point_indices]
+get_far_points(tree, leaf) = @view tree.tgt_points[leaf.far_point_indices]
 
 
 ################################ tree structure ################################
