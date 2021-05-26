@@ -28,7 +28,7 @@ FastKernelTransform.get_correction(::typeof(ek)) = ek
 atol = 1e-3
 rtol = 1e-3
 verbose = false
-lazy = false
+lazy = true
 
 # test driver
 function fkt_test(kernels, x, y::AbstractVecOrMat, max_dofs_per_leaf::Int,

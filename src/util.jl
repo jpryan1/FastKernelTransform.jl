@@ -55,13 +55,9 @@ end
 function LinearAlgebra.mul!(y::AbstractVector, A::LazyDiagonalCorrection, x::AbstractVector, α::Real = 1, β::Real = 0)
     mul!(y, A.A, x, α, β) # multiply
     n = size(A.D, 1)
-    if length(x) == n
-        return mul!(y, A.D, x, α, 1)
-    else
-        i = 1:n
-        xi, yi = @views x[i], y[i]
-        return mul!(yi, A.D, xi, α, 1)
-    end
+    i = 1:n
+    xi, yi = @views x[i], y[i]
+    return mul!(yi, A.D, xi, α, 1)
 end
 
 ############################# rational QR factorization ########################

@@ -84,10 +84,13 @@ end
 function compute_lazy_times!(b, y, n, d, kernel, params, to)
     points = generator(n, d) # generate data set
     G = gramian(kernel, points)
-    bench = @benchmarkable mul!($bl, $G, $y)
+    bench = @benchmarkable mul!($b, $G, $y)
     lazy_time = minimum(run(bench, samples = nsamples)).time
     return lazy_time
 end
+
+max_lazy = 40_000
+max_dense = 20_000
 
 for k in eachindex(max_dofs_per_leaf_multiplier)
     for j in eachindex(dimensions)
@@ -95,7 +98,8 @@ for k in eachindex(max_dofs_per_leaf_multiplier)
         println("dim ", d)
         mdpl = Int(round(max_dofs_per_leaf_multiplier[k]*max_dofs_fun(trunc_param, d)))
         println("max dofs ", mdpl)
-        params = FactorizationParameters(max_dofs_per_leaf = mdpl, precond_param = precond_param, trunc_param = trunc_param)
+        params = FactorizationParameters(max_dofs_per_leaf = mdpl, precond_param = precond_param,
+                                         trunc_param = trunc_param, lazy = true)
         for i in eachindex(sizes)
             n = sizes[i]
             println("size ", n)
@@ -109,11 +113,16 @@ for k in eachindex(max_dofs_per_leaf_multiplier)
                 println("factor ", factor_times[exp_i, i, j, k] / nano )
                 println("fast ", fast_times[exp_i, i, j, k] / nano )
 
-                if n < 30_000
+                if n < max_dense
                     GC.gc()
                     dense_time = compute_dense_times!(b, y, n, d, kernel, params, to)
                     dense_times[exp_i, i, j, k] = dense_time
                     println("dense ", dense_times[exp_i, i, j, k] / nano )
+                end
+                if n < max_lazy
+                    lazy_time = compute_lazy_times!(b, y, n, d, kernel, params, to)
+                    lazy_times[exp_i, i, j, k] = lazy_time
+                    println("lazy ", lazy_times[exp_i, i, j, k] / nano )
                 end
             end
         end
