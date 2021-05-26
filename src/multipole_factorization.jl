@@ -122,8 +122,7 @@ end
 # FIXME: tgt_points can still be empty
 function compute_interactions(F::MultipoleFactorization, tgt_points, src_points, T::Type = transformation_eltype(F))
     G = gramian(F.kernel, tgt_points, src_points)
-    # return islazy(F) ? LazyMultipoleMatrix{T}(()->G, size(G)...) : Matrix(G)
-    return islazy(F) ? G : Matrix(G)
+    islazy(F) ? G : Matrix(G)
 end
 
 # computes whether or not compressing the far interaction is more efficient than a direct multiply
