@@ -10,16 +10,17 @@ using CovarianceFunctions
 using TimerOutputs
 to = TimerOutput()
 
-generator(n, d) = unit_hypersphere(n, d)
-gen_name = "hypersphere"
+# generator(n, d) = unit_hypersphere(n, d)
+# gen_name = "hypersphere"
+generator(n, d) = interlocking_rings(n, d)
+gen_name = "interlocking_rings"
+
 trunc_param = 4
 f = h5open("FKT_breakeven_$(gen_name)_p$(trunc_param).h5", "w")
 
-# generator(n, d) = interlocking_rings(n, d)
-# gen_name = "interlocking_rings"
 f["generator"] = gen_name
 
-sizes = collect(range(500, 2_000, step = 500))
+sizes = collect(range(1_000, 20_000, step = 1_000))
 dimensions = collect(3:6)
 f["sizes"] = sizes
 f["dimensions"] = dimensions
@@ -29,9 +30,9 @@ max_dofs_per_leaf_multiplier = [2]  # When to stop in tree decomposition
 max_dofs_fun(p, d) = binomial(p + d, d)
 f["max_dofs_per_leaf"] = "functional"
 
-nexperiments = 4 # number of different random datasets for each size
+nexperiments = 2 # number of different random datasets for each size
 f["nexperiments"] = nexperiments
-nsamples = 8 # number of different runs for benchmarking results
+nsamples = 1 # number of different runs for benchmarking results
 f["nsamples"] = nsamples
 
 using CovarianceFunctions
@@ -80,9 +81,9 @@ for k in eachindex(max_dofs_per_leaf_multiplier)
 
                 # lazy multiply benchmark
                 G = gramian(kernel, points)
-                bench = @benchmarkable mul!($bl, $G, $y)
-                lazy_times[exp_i, i, j, k] = minimum(run(bench, samples = nsamples)).time
-                println("lazy ", lazy_times[exp_i, i, j, k] / nano )
+                # bench = @benchmarkable mul!($bl, $G, $y)
+                # lazy_times[exp_i, i, j, k] = minimum(run(bench, samples = nsamples)).time
+                # println("lazy ", lazy_times[exp_i, i, j, k] / nano )
 
                 # dense multiply benchmark, includes instantiation
                 bench = @benchmarkable mul!($bd, Matrix($G), $y)
@@ -95,11 +96,11 @@ end
 
 factor_times ./= nano
 fast_times ./= nano
-lazy_times ./= nano
+# lazy_times ./= nano
 dense_times ./= nano
 
 f["factor_times"] = factor_times
 f["fast_times"] = fast_times
-f["lazy_times"] = lazy_times
+# f["lazy_times"] = lazy_times
 f["dense_times"] = dense_times
 close(f)
