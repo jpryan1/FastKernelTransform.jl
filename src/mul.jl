@@ -176,7 +176,7 @@ function conj_grad!(x::AbstractVector, F::MultipoleFactorization, b::AbstractVec
     r = b - Ax
     z = approx_inv(F, r)
     p = copy(z)
-    Ap = similar(p)
+    Ap = zero(p)
     rsold = dot(r, z)
 
     for i in 1:max_iter
