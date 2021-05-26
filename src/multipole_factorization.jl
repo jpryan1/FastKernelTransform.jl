@@ -88,8 +88,9 @@ function compute_transformation_mats!(fact::MultipoleFactorization)
     # points r such that rprime/r is not bad, and, if compression efficient,
     # make s2o and o2i matrix for node.
 
-    for node in fact.tree.allnodes
+    @sync for node in fact.tree.allnodes
         if isempty(node.src_point_indices) continue end
+        @spawn begin
         src_points = fact.tree.src_points[node.src_point_indices]
         if isleaf(node) && !isempty(node.near_point_indices)
             tgt_points = fact.tree.tgt_points[node.near_point_indices]
@@ -105,6 +106,7 @@ function compute_transformation_mats!(fact::MultipoleFactorization)
             if !isempty(far_points)
                 node.o2i = compute_interactions(fact, far_points, src_points)
             end
+        end
         end
     end
     return nothing
