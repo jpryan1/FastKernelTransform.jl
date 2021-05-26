@@ -27,7 +27,7 @@ FastKernelTransform.get_correction(::typeof(ek)) = ek
 
 atol = 1e-3
 rtol = 1e-3
-verbose = true
+verbose = false
 lazy = false
 
 # test driver
