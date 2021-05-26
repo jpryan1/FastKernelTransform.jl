@@ -116,7 +116,7 @@ version = "0.6.1"
 
 [[CovarianceFunctions]]
 deps = ["DiffResults", "FillArrays", "ForwardDiff", "KroneckerProducts", "LazyArrays", "LazyInverse", "LazyLinearAlgebra", "LinearAlgebra", "LinearAlgebraExtensions", "SparseArrays", "SpecialFunctions", "TaylorSeries", "Test", "ToeplitzMatrices", "WoodburyIdentity"]
-git-tree-sha1 = "b3c2bee667f4fd11ca62d5d5edf7953d44f35ed4"
+git-tree-sha1 = "f54c8f111154c5263b5f6916dc519476851192a6"
 repo-rev = "master"
 repo-url = "https://github.com/SebastianAment/CovarianceFunctions.jl.git"
 uuid = "b3329135-7958-41d4-bb02-e084c5a526bf"
