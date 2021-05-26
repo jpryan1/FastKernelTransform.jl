@@ -85,10 +85,6 @@ end
         K = gramian(k, x)
         c = K * y
         @. c += variance * y
-        println(sum(x->abs(x)>1e-4, b-c))
-        println(maximum(abs, b-c))
-        println(sum(isnan, b))
-        println(sum(isnan, c))
         @test isapprox(b, c, rtol = rtol)
         # indexing
         for _ in 1:16
@@ -167,12 +163,9 @@ using FastKernelTransform: conj_grad
     b = fact * y
     M =  k.(x, permutedims(x)) + Diagonal(variance)
     @test isapprox(b, M*y, atol = atol, rtol = rtol)
-    rtol = 1e-3
     y_cg = conj_grad(fact, b, tol = rtol, max_iter = 256)
     @test isapprox(y, y_cg, rtol = rtol) # error
     b_cg = fact * y_cg
-    # println(norm(y_cg-y)/norm(y))
-    # println(norm(b_cg-b)/norm(b))
     @test isapprox(b, b_cg, rtol = rtol)
 end
 

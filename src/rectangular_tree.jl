@@ -75,6 +75,8 @@ end
 
 isleaf(node::BallNode) = node.splitter_normal == nothing
 
+# IDEA: experiment with viewing into the data representation of the tree,
+# since it might be more cache friendly through reordering
 get_source_points(tree, leaf) = @view tree.src_points[leaf.src_point_indices]
 get_target_points(tree, leaf) = @view tree.tgt_points[leaf.tgt_point_indices]
 get_near_points(tree, leaf) = @view tree.tgt_points[leaf.near_point_indices]
