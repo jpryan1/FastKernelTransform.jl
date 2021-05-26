@@ -202,9 +202,9 @@ end
 
     l = 2
     xs1 = range(-l, l, length = 64)
-    ns = length(xs1)
     xs = [[xi, xj] for xi in xs1, xj in xs1]
     xs = vec(xs)
+    ns = length(xs)
 
     for _ in 1:16 # this sometimes, but not always errors
         x = [randn(d) for _ in 1:n] # random input
@@ -213,12 +213,9 @@ end
         @test F isa MultipoleFactorization
         a = randn(n)
         MS = k.(xs, permutedims(x))
-        println(sum(x->abs(x)>(1e-3), MS*a - FS*a))
-        println(norm(MS*a - FS*a))
-        println(maximum(abs, MS*a - FS*a))
         @test isapprox(MS*a, FS*a, atol = atol, rtol = rtol)
-        # b = zeros(ns)
-        # @test isapprox(MS*a, mul!(b, FS, a), atol = atol, rtol = rtol)
+        b = zeros(ns)
+        @test isapprox(MS*a, mul!(b, FS, a), atol = atol, rtol = rtol)
     end
 end
 
