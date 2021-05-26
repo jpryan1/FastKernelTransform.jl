@@ -118,8 +118,9 @@ function initialize_tree(tgt_points, src_points, max_dofs_per_leaf,
 
     for node in bt.allnodes # parallel over nodes?
         if isnan(node.max_rprime) && !isempty(node.src_point_indices)
-          node_src_points = src_points[node.src_point_indices]
-          node.max_rprime = maximum((norm(difference(pt, node.center)) for pt in node_src_points)) # pre-compute
+            node_src_points = src_points[node.src_point_indices]
+            node_tgt_points = tgt_points[node.tgt_point_indices]
+          node.max_rprime = maximum((norm(difference(pt, node.center)) for pt in vcat(node_src_points,node_tgt_points))) # pre-compute
         end
         if isleaf(node) #not par
             push!(bt.allleaves, node)
@@ -136,7 +137,7 @@ function initialize_tree(tgt_points, src_points, max_dofs_per_leaf,
     for lev in 1:top_lev
       level_nodes =  bt.allnodes[levels .== lev]
       @sync for node in level_nodes
-        @spawn begin
+         @spawn if !isempty(node.src_point_indices)
           level = nodes_above(root, node)
           rprime = node.max_rprime
           min_dist_for_compress = rprime/bt.neighbor_scale

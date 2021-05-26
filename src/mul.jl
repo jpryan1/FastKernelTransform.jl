@@ -112,7 +112,6 @@ function multiply_multipoles!(y, F::MultipoleFactorization, multipoles,
             xi = @views (x isa AbstractVector) ? multipoles[:, node.node_index] : multipoles[:, :, node.node_index]
         else
             not_compressed += 1
-            xi = @views (x isa AbstractVector) ? x[node.src_point_indices] : x[node.src_point_indices, :]
         end
         tmp = zeros(eltype(yi), size(yi))
         multiply_helper!(tmp, node.o2i, xi, 1)
