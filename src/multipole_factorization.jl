@@ -91,10 +91,10 @@ function compute_transformation_mats!(fact::MultipoleFactorization)
     @sync for node in fact.tree.allnodes
         if isempty(node.src_point_indices) continue end
         @spawn begin
-        src_points = fact.tree.src_points[node.src_point_indices]
+        src_points = get_source_points(fact.tree, node)
         if isleaf(node) && !isempty(node.near_point_indices)
-            tgt_points = fact.tree.tgt_points[node.near_point_indices]
-            node.near_mat = compute_interactions(fact, tgt_points, src_points) # near field interactions
+            near_points = get_near_points(fact.tree, node) # node.tgt_points[node.near_point_indices]
+            node.near_mat = compute_interactions(fact, near_points, src_points) # near field interactions
             if issymmetric(fact) # if target and source are equal, need to apply diagonal correction
                 node.near_mat = diagonal_correction!(node.near_mat, fact.variance, node.tgt_point_indices)
             end
@@ -102,8 +102,8 @@ function compute_transformation_mats!(fact::MultipoleFactorization)
         if compression_is_efficient(fact, node)
             compute_compressed_interactions!(fact, node)
         else
-            far_points = fact.tree.tgt_points[node.far_point_indices]
-            if !isempty(far_points)
+            if !isempty(node.far_point_indices)
+                far_points = get_far_points(fact.tree, node)
                 node.o2i = compute_interactions(fact, far_points, src_points)
             end
         end
@@ -122,9 +122,8 @@ end
 # FIXME: tgt_points can still be empty
 function compute_interactions(F::MultipoleFactorization, tgt_points, src_points, T::Type = transformation_eltype(F))
     G = gramian(F.kernel, tgt_points, src_points)
-    return islazy(F) ? LazyMultipoleMatrix{T}(()->G, size(G)...) : Matrix(G)
+    islazy(F) ? G : Matrix(G)
 end
-
 
 # computes whether or not compressing the far interaction is more efficient than a direct multiply
 function compression_is_efficient(F::MultipoleFactorization, node)
@@ -139,13 +138,13 @@ function compute_compressed_interactions!(F::MultipoleFactorization, node)
     begin
         # source to outgoing matrix
         if isempty(node.s2o)
-            src_points = F.tree.src_points[node.src_point_indices]
+            src_points = get_source_points(F.tree, node)
             recentered_src = center.(src_points) # WARNING: BOTTLENECK, move out?
             node.s2o = source2outgoing(F, recentered_src)
         end
         # outgoing to incoming matrix
         begin
-            far_points = F.tree.tgt_points[node.far_point_indices]
+            far_points = get_far_points(F.tree, node)
             recentered_tgt = center.(far_points) # WARNING: BOTTLENECK
             node.o2i = outgoing2incoming(F, recentered_tgt)
         end

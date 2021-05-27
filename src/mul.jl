@@ -1,28 +1,26 @@
 # matrix-vector multiplication and solves for MultipoleFactorization type
 import LinearAlgebra: *, mul!, \
 function *(F::MultipoleFactorization, x::AbstractVector; verbose::Bool = false)
-    # b = similar(x, size(F, 1))
     b = zeros(eltype(x), size(F, 1))
     mul!(b, F, x, verbose = verbose)
 end
 function *(F::MultipoleFactorization, X::AbstractMatrix; verbose::Bool = false)
-    # B = similar(X, size(F, 1), size(X, 2))
-    B = zeros(eltype(X), size(F,1), size(X,2))
+    B = zeros(eltype(X), size(F, 1), size(X, 2))
     mul!(B, F, X, verbose = verbose)
 end
 \(F::MultipoleFactorization, b::AbstractVector) = conj_grad(F, b)
 
 function mul!(Y::AbstractVector, A::MultipoleFactorization, X::AbstractVector,
               α::Real = 1, β::Real = 0; verbose::Bool = false)
-    tmp = zeros(eltype(X), size(A,1))
+    tmp = zeros(eltype(X), size(A, 1))
     _mul!(tmp, A, X, verbose = verbose)
-    Y .=  α*tmp + β*Y
+    @. Y = α*tmp + β*Y
 end
 function mul!(Y::AbstractMatrix, A::MultipoleFactorization, X::AbstractMatrix,
               α::Real = 1, β::Real = 0; verbose::Bool = false)
-      tmp = zeros(eltype(X), size(A,1), size(X,2))
+      tmp = zeros(eltype(X), size(A, 1), size(X, 2))
       _mul!(tmp, A, X, verbose = verbose)
-      Y .=  α*tmp + β*Y
+      @. Y = α*tmp + β*Y
 end
 # IDEA: could pass data structure that reports how many compressions took place
 function _mul!(y::AbstractVecOrMat, F::MultipoleFactorization, x::AbstractVecOrMat;
@@ -178,7 +176,7 @@ function conj_grad!(x::AbstractVector, F::MultipoleFactorization, b::AbstractVec
     r = b - Ax
     z = approx_inv(F, r)
     p = copy(z)
-    Ap = similar(p)
+    Ap = zero(p)
     rsold = dot(r, z)
 
     for i in 1:max_iter
