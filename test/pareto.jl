@@ -11,12 +11,12 @@ using CovarianceFunctions: Exp, EQ, MaternP, Matern, Cauchy, difference
 using FastKernelTransform: FmmMatrix, factorize
 using NearestNeighbors
 
-ek(r) = exp(-r) # with short lengthscale, not as accurate?
+ek(r) = 1/(1+r^2) # with short lengthscale, not as accurate?
 ek(x, y) = ek(norm(difference(x, y)))
 FastKernelTransform.qrable(::typeof(ek)) = false
 GC.gc()
 
-function run_pareto_test(b, x, scale, kernel, points, param, out)
+function run_pareto_test(b, x, scale, kernel, points, param)
     params = FactorizationParameters(max_dofs_per_leaf = 128, precond_param = 0,
                                     trunc_param = param, neighbor_scale=scale, lazy = true)
     mat = FmmMatrix(kernel, points, params)
@@ -26,7 +26,7 @@ function run_pareto_test(b, x, scale, kernel, points, param, out)
         bbar = *(fact, x, verbose = true)
     end
     rel_err = norm(b-bbar)/norm(b)
-    if out println(elapsed_time,",",rel_err) end
+    return elapsed_time, rel_err
 end
 
 function run_time_trial()
@@ -47,9 +47,17 @@ function run_time_trial()
         println("p=", param)
         for scale in [0.3 0.4 0.5 0.6 0.7]
     # bigger neighbor scale means more compression, less accuracy
-            run_pareto_test(b, x, scale, kernel, points, param, false)
-            run_pareto_test(b, x, scale, kernel, points, param, true)
+            run_pareto_test(b, x, scale, kernel, points, param)
+            times=0
+            errs=0
             GC.gc()
+            for k in 1:3
+                time, err = run_pareto_test(b, x, scale, kernel, points, param)
+                times+=time
+                errs+=err
+                GC.gc()
+            end
+            println(times/3.0,",", errs/3.0)
         end
     end
 end

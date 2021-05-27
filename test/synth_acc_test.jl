@@ -9,10 +9,10 @@ using Plots
     # TODO: loop test over kernels
     # kernel(r) = 1/r
     # kernel(r) = exp(-r^2)
-    kernel(r) = (1/(1+r^2))
+    kernel(r) = exp(-r)
 
     for d in [3 9]
-        orders = collect(3:3:12)
+        orders = collect(6:3:18)
         worst_errors = []
         N = 1000
         for order in orders
@@ -56,12 +56,16 @@ using Plots
                 C = @. gegenbauer((d/2)-1, k, cosγ) * rp^k / r^(k+1)
                 result = dot(C, FG)
 
-                worst_err = max(worst_err,  abs(result-kernel(norm(x-xp)))/kernel(norm(x-xp)))
+                worst_err = max(worst_err,  abs(result-kernel(norm(x-xp))))
             end
             push!(worst_errors,worst_err)
         end
         println(d)
-        println(worst_errors)
+        for e in worst_errors
+            print(e)
+            print(" ")
+        end
+        println("")
         if d==3
             plot(orders, worst_errors, seriestype = :scatter, yscale = :log10, label="d=3")
         else
