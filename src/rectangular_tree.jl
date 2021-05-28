@@ -84,10 +84,11 @@ get_far_points(tree, leaf) = @view tree.tgt_points[leaf.far_point_indices]
 
 
 ################################ tree structure ################################
-struct Tree{T<:Real, R<:BallNode, TGT<:AbstractVecOfVec, V<:AbstractVector{<:BallNode}}
+struct Tree{T<:Real, R<:BallNode, TGT<:AbstractVecOfVec, SRC<:AbstractVecOfVec,
+            V<:AbstractVector{<:BallNode}}
     kd_tree::KDTree
     tgt_points::TGT
-    src_points::TGT
+    src_points::SRC
     dimension::Int64
     root::R
     max_dofs_per_leaf::Int64

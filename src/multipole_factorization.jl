@@ -112,14 +112,12 @@ function compute_transformation_mats!(fact::MultipoleFactorization)
     return nothing
 end
 
-
 function transformation_eltype(F::MultipoleFactorization)
     T = eltype(F)
     T = T <: Real ? Complex{T} : T
 end
 
 # computes interaction matrix, and stores it in near_mat, either lazily or densely
-# FIXME: tgt_points can still be empty
 function compute_interactions(F::MultipoleFactorization, tgt_points, src_points, T::Type = transformation_eltype(F))
     G = gramian(F.kernel, tgt_points, src_points)
     islazy(F) ? G : Matrix(G)

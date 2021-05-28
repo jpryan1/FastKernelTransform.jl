@@ -1,8 +1,8 @@
-mutable struct FmmMatrix{K, V<:AbstractVector{<:AbstractVector{<:Real}}, VT, PAR} # IDEA: use CovarianceFunctions.Gramian
+mutable struct FmmMatrix{K, TGT<:AbstractVecOfVec{<:Number}, SRC<:AbstractVecOfVec{<:Number}, VAR, PAR} # IDEA: use CovarianceFunctions.Gramian
     kernel::K
-    tgt_points::V
-    src_points::V
-    variance::VT
+    tgt_points::TGT
+    src_points::SRC
+    variance::VAR
     params::PAR
     to::TimerOutput
 end

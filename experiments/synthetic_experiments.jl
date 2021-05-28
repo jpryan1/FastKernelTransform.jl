@@ -36,9 +36,9 @@ max_dofs_per_leaf_multiplier = [2]  # When to stop in tree decomposition
 max_dofs_fun(p, d) = binomial(p + d, d)
 f["max_dofs_per_leaf"] = "functional"
 
-nexperiments = 2 # number of different random datasets for each size
+nexperiments = 5 # number of different random datasets for each size
 f["nexperiments"] = nexperiments
-nsamples = 3 # number of different runs for benchmarking results
+nsamples = 1 # number of different runs for benchmarking results
 f["nsamples"] = nsamples
 
 using CovarianceFunctions
