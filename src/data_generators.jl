@@ -1,4 +1,5 @@
 # random data generators
+# IDEA: use StaticArrays for all generators
 uniform_data(n, d) = [rand(d) for _ in 1:n]
 gaussian_data(n, d) = [randn(d) for _ in 1:n]
 
