@@ -3,16 +3,17 @@ using Test
 using LinearAlgebra
 using FastKernelTransform
 using FastKernelTransform: transformation_coefficients, init_F_G, init_F, gegenbauer
-using Plots
+using Printf
+# using Plots
 
 @testset "expansion" begin
     # TODO: loop test over kernels
     # kernel(r) = 1/r
     # kernel(r) = exp(-r^2)
-    kernel(r) = exp(-r)
-
-    for d in [3 9]
-        orders = collect(6:3:18)
+    kernel(r) = 1/(1+r^2)
+    println("cauchy")
+    for d in [3 6 9 12]
+        orders = collect(3:3:18)
         worst_errors = []
         N = 1000
         for order in orders
@@ -58,21 +59,24 @@ using Plots
 
                 worst_err = max(worst_err,  abs(result-kernel(norm(x-xp))))
             end
+            print("d=",d,",p=",order,",err=")
+            @printf "%.2e" worst_err
+            println("")
             push!(worst_errors,worst_err)
         end
-        println(d)
-        for e in worst_errors
-            print(e)
-            print(" ")
-        end
-        println("")
-        if d==3
-            plot(orders, worst_errors, seriestype = :scatter, yscale = :log10, label="d=3")
-        else
-            plot!(orders, worst_errors, seriestype = :scatter, yscale = :log10, label="d=8")
-        end
+        # println(d)
+        # for e in worst_errors
+        #     print(e)
+        #     print(" ")
+        # end
+        # println("")
+        # if d==3
+        #     plot(orders, worst_errors, seriestype = :scatter, yscale = :log10, label="d=3")
+        # else
+        #     plot!(orders, worst_errors, seriestype = :scatter, yscale = :log10, label="d=8")
+        # end
     end
-    gui()
+    # gui()
 end
 
 end

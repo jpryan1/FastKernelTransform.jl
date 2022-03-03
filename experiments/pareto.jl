@@ -31,7 +31,7 @@ end
 
 function run_time_trial()
 
-    N = 10000  # Number of points
+    N = 32000  # Number of points
     dimension = 2
     to = TimerOutput()
     alpha = dimension/2 - 1
@@ -45,7 +45,7 @@ function run_time_trial()
     b = kern_mat * x
     for param in 0:2:6
         println("p=", param)
-        for scale in [0.3 0.4 0.5 0.6 0.7]
+        for scale in [0.25 0.35 0.45 0.55 0.65 0.75]
     # bigger neighbor scale means more compression, less accuracy
             run_pareto_test(b, x, scale, kernel, points, param)
             times=0

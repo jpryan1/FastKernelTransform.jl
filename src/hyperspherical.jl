@@ -47,7 +47,9 @@ function hyperspherical(r::Real, θ::AbstractVector{<:Real}, φ::Real,
         sinθ_j, cosθ_j = sincos(θ[j])
         prod_gegen *= gegenbauer(α_j, n, cosθ_j) * sinθ_j^μ[j+1] # IDEA pre-calculate gegenbauer for all relevant α, n, cosθ
     end
-    return prod_gegen * exp(1im * m * φ)
+    if m > 0 return sqrt(2) * ((-1)^m) * prod_gegen * cos(m * φ) end
+    if m < 0 return sqrt(2) * ((-1)^m) * prod_gegen * sin(-m * φ) end
+    return prod_gegen
 end
 
 function squared_hyper_normalizer_table(dimension::Int, trunc_param::Int)

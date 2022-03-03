@@ -24,7 +24,7 @@ using CovarianceFunctions
 using NearestNeighbors
 
 export MultipoleFactorization
-export fkt # fast kernel transform
+export fkt, fkt_wrapper, pick_best_degree # fast kernel transform
 
 #######################################
 include("util.jl")
@@ -45,6 +45,7 @@ include("source2outgoing.jl")
 include("preconditioner.jl")
 include("expansion.jl")
 include("symbolic.jl")
+include("minifkt.jl")
 
 include("mul.jl")
 include("gramian.jl") # defines "fkt" on gramian matrix
